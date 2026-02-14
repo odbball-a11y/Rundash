@@ -1,0 +1,730 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Runalyze Dashboard</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Outfit:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-primary: #0a0e17;
+      --bg-card: #111827;
+      --bg-card-hover: #1a2332;
+      --border: #1e293b;
+      --text-primary: #e2e8f0;
+      --text-secondary: #94a3b8;
+      --text-muted: #64748b;
+      --accent-blue: #38bdf8;
+      --accent-green: #34d399;
+      --accent-orange: #fb923c;
+      --accent-red: #f87171;
+      --accent-purple: #a78bfa;
+      --accent-cyan: #22d3ee;
+      --font-display: 'Outfit', sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: var(--font-display);
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* --- Header --- */
+    .header {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(10, 14, 23, 0.85);
+      backdrop-filter: blur(20px);
+      border-bottom: 1px solid var(--border);
+      padding: 1rem 2rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .header h1 {
+      font-size: 1.4rem;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      background: linear-gradient(135deg, var(--accent-blue), var(--accent-cyan));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    .last-updated {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+
+    .refresh-btn {
+      font-family: var(--font-display);
+      font-size: 0.8rem;
+      font-weight: 600;
+      padding: 0.5rem 1.2rem;
+      border: 1px solid var(--accent-blue);
+      background: transparent;
+      color: var(--accent-blue);
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+
+    .refresh-btn:hover {
+      background: rgba(56, 189, 248, 0.1);
+      box-shadow: 0 0 20px rgba(56, 189, 248, 0.15);
+    }
+
+    .refresh-btn.loading {
+      opacity: 0.6;
+      pointer-events: none;
+    }
+
+    .refresh-btn .spinner {
+      display: none;
+      width: 14px;
+      height: 14px;
+      border: 2px solid transparent;
+      border-top-color: var(--accent-blue);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    .refresh-btn.loading .spinner { display: block; }
+    .refresh-btn.loading .refresh-icon { display: none; }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* --- Layout --- */
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 1.5rem;
+    }
+
+    /* --- Stats row --- */
+    .stats-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1rem;
+      margin-bottom: 2rem;
+    }
+
+    .stat-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.2rem;
+      transition: all 0.2s;
+    }
+
+    .stat-card:hover {
+      background: var(--bg-card-hover);
+      border-color: var(--accent-blue);
+      transform: translateY(-2px);
+    }
+
+    .stat-label {
+      font-size: 0.7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-muted);
+      margin-bottom: 0.4rem;
+    }
+
+    .stat-value {
+      font-family: var(--font-mono);
+      font-size: 1.8rem;
+      font-weight: 700;
+      line-height: 1;
+    }
+
+    .stat-sub {
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      margin-top: 0.3rem;
+    }
+
+    /* --- Sections --- */
+    .section {
+      margin-bottom: 2rem;
+    }
+
+    .section-title {
+      font-size: 1.1rem;
+      font-weight: 700;
+      margin-bottom: 1rem;
+      padding-bottom: 0.5rem;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .section-title .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+
+    /* --- Activity table --- */
+    .table-wrapper {
+      overflow-x: auto;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: var(--bg-card);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.82rem;
+    }
+
+    thead th {
+      font-family: var(--font-mono);
+      font-size: 0.65rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--text-muted);
+      padding: 0.8rem 1rem;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      background: var(--bg-card);
+    }
+
+    tbody tr {
+      border-bottom: 1px solid rgba(30, 41, 59, 0.5);
+      transition: background 0.15s;
+    }
+
+    tbody tr:hover { background: var(--bg-card-hover); }
+    tbody tr:last-child { border-bottom: none; }
+
+    td {
+      padding: 0.7rem 1rem;
+      font-family: var(--font-mono);
+      font-size: 0.78rem;
+      color: var(--text-secondary);
+      white-space: nowrap;
+    }
+
+    td.sport-cell {
+      font-family: var(--font-display);
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    td.id-cell {
+      color: var(--text-muted);
+      font-size: 0.7rem;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 0.15rem 0.5rem;
+      border-radius: 6px;
+      font-size: 0.68rem;
+      font-weight: 600;
+      font-family: var(--font-display);
+    }
+
+    .badge-run { background: rgba(52, 211, 153, 0.15); color: var(--accent-green); }
+    .badge-cycle { background: rgba(56, 189, 248, 0.15); color: var(--accent-blue); }
+    .badge-swim { background: rgba(34, 211, 238, 0.15); color: var(--accent-cyan); }
+    .badge-other { background: rgba(167, 139, 250, 0.15); color: var(--accent-purple); }
+
+    /* --- Health metrics grid --- */
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 1rem;
+    }
+
+    .metric-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.2rem;
+    }
+
+    .metric-card h3 {
+      font-size: 0.85rem;
+      font-weight: 700;
+      margin-bottom: 0.8rem;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+
+    .metric-list {
+      max-height: 300px;
+      overflow-y: auto;
+    }
+
+    .metric-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 0.35rem 0;
+      border-bottom: 1px solid rgba(30, 41, 59, 0.3);
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+    }
+
+    .metric-row .date { color: var(--text-muted); }
+    .metric-row .value { color: var(--text-primary); font-weight: 500; }
+
+    /* --- Loading / Status --- */
+    .status-bar {
+      text-align: center;
+      padding: 3rem;
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+    }
+
+    .status-bar.error { color: var(--accent-red); }
+
+    .refresh-status {
+      display: none;
+      position: fixed;
+      bottom: 2rem;
+      right: 2rem;
+      background: var(--bg-card);
+      border: 1px solid var(--accent-blue);
+      border-radius: 12px;
+      padding: 1rem 1.5rem;
+      font-size: 0.8rem;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+      z-index: 200;
+      animation: slideUp 0.3s ease;
+    }
+
+    .refresh-status.visible { display: flex; align-items: center; gap: 0.6rem; }
+
+    @keyframes slideUp {
+      from { transform: translateY(20px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+
+    /* --- Responsive --- */
+    @media (max-width: 768px) {
+      .header { padding: 0.8rem 1rem; }
+      .header h1 { font-size: 1.1rem; }
+      .container { padding: 1rem; }
+      .stats-row { grid-template-columns: repeat(2, 1fr); }
+      .stat-value { font-size: 1.4rem; }
+      .last-updated { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <div class="header">
+    <h1>🏃 Runalyze Dashboard</h1>
+    <div class="header-right">
+      <span class="last-updated" id="lastUpdated">Loading...</span>
+      <button class="refresh-btn" id="refreshBtn" onclick="triggerRefresh()">
+        <span class="refresh-icon">↻</span>
+        <span class="spinner"></span>
+        Refresh Data
+      </button>
+    </div>
+  </div>
+
+  <!-- Main content -->
+  <div class="container">
+    <!-- Stats summary -->
+    <div class="stats-row" id="statsRow"></div>
+
+    <!-- Activities table -->
+    <div class="section">
+      <div class="section-title">
+        <span class="dot" style="background: var(--accent-green)"></span>
+        Activities
+      </div>
+      <div id="activitiesContent">
+        <div class="status-bar">Loading activities...</div>
+      </div>
+    </div>
+
+    <!-- Health metrics -->
+    <div class="section">
+      <div class="section-title">
+        <span class="dot" style="background: var(--accent-purple)"></span>
+        Health Metrics
+      </div>
+      <div class="metrics-grid" id="metricsGrid"></div>
+    </div>
+  </div>
+
+  <!-- Refresh status toast -->
+  <div class="refresh-status" id="refreshStatus">
+    <span class="spinner" style="display:block; border-top-color: var(--accent-blue);"></span>
+    <span id="refreshStatusText">Refreshing data...</span>
+  </div>
+
+  <script>
+    // -----------------------------------------------------------------------
+    // Configuration
+    // -----------------------------------------------------------------------
+    // Base URL for your data files. Adjust if hosted differently.
+    // When on Netlify, data/ is in the repo root served as static files.
+    const DATA_BASE = './data';
+
+    // -----------------------------------------------------------------------
+    // Data loading
+    // -----------------------------------------------------------------------
+    async function loadJSON(filename) {
+      try {
+        const resp = await fetch(`${DATA_BASE}/${filename}?t=${Date.now()}`);
+        if (!resp.ok) throw new Error(`${resp.status} ${resp.statusText}`);
+        return await resp.json();
+      } catch (err) {
+        console.warn(`Failed to load ${filename}:`, err.message);
+        return null;
+      }
+    }
+
+    // -----------------------------------------------------------------------
+    // Formatting helpers
+    // -----------------------------------------------------------------------
+    function fmtDuration(seconds) {
+      if (!seconds) return '-';
+      const h = Math.floor(seconds / 3600);
+      const m = Math.floor((seconds % 3600) / 60);
+      const s = seconds % 60;
+      return h > 0 ? `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`
+                    : `${m}:${String(s).padStart(2,'0')}`;
+    }
+
+    function fmtDist(km) {
+      if (!km && km !== 0) return '-';
+      return parseFloat(km).toFixed(2) + ' km';
+    }
+
+    function fmtDate(d) {
+      if (!d) return '-';
+      try {
+        const dt = new Date(d);
+        return dt.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+          + ' ' + dt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+      } catch { return d; }
+    }
+
+    function fmtDateShort(d) {
+      if (!d) return '-';
+      try {
+        return new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+      } catch { return d; }
+    }
+
+    function getField(obj, keys, fallback = null) {
+      for (const k of keys) {
+        if (obj[k] !== undefined && obj[k] !== null) return obj[k];
+      }
+      return fallback;
+    }
+
+    function extractId(activity) {
+      const raw = getField(activity, ['id', '@id', 'activityId']);
+      if (typeof raw === 'string' && raw.includes('/')) return raw.split('/').filter(Boolean).pop();
+      return raw;
+    }
+
+    function sportBadge(sport) {
+      if (!sport) return '<span class="badge badge-other">?</span>';
+      const s = String(sport).toLowerCase();
+      if (s.includes('run')) return `<span class="badge badge-run">${sport}</span>`;
+      if (s.includes('cycl') || s.includes('bike')) return `<span class="badge badge-cycle">${sport}</span>`;
+      if (s.includes('swim')) return `<span class="badge badge-swim">${sport}</span>`;
+      return `<span class="badge badge-other">${sport}</span>`;
+    }
+
+    // -----------------------------------------------------------------------
+    // Render functions
+    // -----------------------------------------------------------------------
+    function renderStats(activities, hrv, sleep, restHR) {
+      const el = document.getElementById('statsRow');
+
+      const totalDist = activities.reduce((sum, a) => {
+        const d = getField(a, ['distance', 'distanceInKm', 'distance_km']);
+        return sum + (parseFloat(d) || 0);
+      }, 0);
+
+      const totalDuration = activities.reduce((sum, a) => {
+        const d = getField(a, ['duration', 's', 'time', 'duration_s', 'movingTime']);
+        return sum + (parseInt(d) || 0);
+      }, 0);
+
+      const latestHRV = hrv && hrv.length > 0 ? getField(hrv[0], ['value', 'rmssd']) : null;
+      const latestRestHR = restHR && restHR.length > 0 ? getField(restHR[0], ['value', 'restingHeartRate']) : null;
+      const latestSleep = sleep && sleep.length > 0 ? getField(sleep[0], ['value', 'duration']) : null;
+
+      const cards = [
+        { label: 'Total Activities', value: activities.length, sub: 'all time' },
+        { label: 'Total Distance', value: totalDist.toFixed(0) + ' km', sub: 'all time' },
+        { label: 'Total Duration', value: fmtDuration(totalDuration), sub: 'all time' },
+        { label: 'Latest HRV', value: latestHRV ? parseFloat(latestHRV).toFixed(1) + ' ms' : '-', sub: 'RMSSD', color: 'var(--accent-purple)' },
+        { label: 'Resting HR', value: latestRestHR ? latestRestHR + ' bpm' : '-', sub: 'latest', color: 'var(--accent-red)' },
+        { label: 'Sleep', value: latestSleep ? (parseFloat(latestSleep) / 60).toFixed(1) + ' hrs' : '-', sub: 'latest', color: 'var(--accent-cyan)' },
+      ];
+
+      el.innerHTML = cards.map(c => `
+        <div class="stat-card">
+          <div class="stat-label">${c.label}</div>
+          <div class="stat-value" style="color: ${c.color || 'var(--text-primary)'}">${c.value}</div>
+          <div class="stat-sub">${c.sub}</div>
+        </div>
+      `).join('');
+    }
+
+    function renderActivities(activities) {
+      const el = document.getElementById('activitiesContent');
+
+      if (!activities || activities.length === 0) {
+        el.innerHTML = '<div class="status-bar">No activities found.</div>';
+        return;
+      }
+
+      // Sort newest first
+      activities.sort((a, b) => {
+        const da = getField(a, ['datetime', 'date', 'startDate', 'dateTime']) || '';
+        const db = getField(b, ['datetime', 'date', 'startDate', 'dateTime']) || '';
+        return db.localeCompare(da);
+      });
+
+      const rows = activities.map(a => {
+        const id = extractId(a);
+        const date = getField(a, ['datetime', 'date', 'startDate', 'dateTime']);
+        const sport = getField(a, ['sport', 'sportName', 'sport_name', 'sportType']);
+        const title = getField(a, ['title', 'name', 'activityType']);
+        const dist = getField(a, ['distance', 'distanceInKm', 'distance_km']);
+        const dur = getField(a, ['duration', 's', 'time', 'duration_s', 'movingTime']);
+        const hrAvg = getField(a, ['heartRateAvg', 'avgHeartRate', 'avg_heart_rate', 'hrAvg']);
+        const trimp = getField(a, ['trimp']);
+        const vo2 = getField(a, ['vo2max', 'effectiveVO2max']);
+
+        return `<tr>
+          <td class="id-cell">${id || '-'}</td>
+          <td>${fmtDate(date)}</td>
+          <td class="sport-cell">${sportBadge(sport)}</td>
+          <td>${title || '-'}</td>
+          <td>${fmtDist(dist)}</td>
+          <td>${fmtDuration(parseInt(dur))}</td>
+          <td>${hrAvg || '-'}</td>
+          <td>${trimp || '-'}</td>
+          <td>${vo2 ? parseFloat(vo2).toFixed(1) : '-'}</td>
+        </tr>`;
+      }).join('');
+
+      el.innerHTML = `
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Date</th>
+                <th>Sport</th>
+                <th>Title</th>
+                <th>Distance</th>
+                <th>Duration</th>
+                <th>HR Avg</th>
+                <th>TRIMP</th>
+                <th>VO2max</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      `;
+    }
+
+    function renderMetrics(hrv, sleep, restHR) {
+      const el = document.getElementById('metricsGrid');
+      let html = '';
+
+      // HRV
+      if (hrv && hrv.length > 0) {
+        const rows = hrv.slice(0, 50).map(h => {
+          const date = getField(h, ['datetime', 'date', 'dateTime']);
+          const val = getField(h, ['value', 'rmssd']);
+          return `<div class="metric-row">
+            <span class="date">${fmtDateShort(date)}</span>
+            <span class="value">${val ? parseFloat(val).toFixed(1) + ' ms' : '-'}</span>
+          </div>`;
+        }).join('');
+
+        html += `<div class="metric-card">
+          <h3><span class="dot" style="background: var(--accent-purple)"></span> HRV (RMSSD)</h3>
+          <div class="metric-list">${rows}</div>
+        </div>`;
+      }
+
+      // Resting HR
+      if (restHR && restHR.length > 0) {
+        const rows = restHR.slice(0, 50).map(h => {
+          const date = getField(h, ['datetime', 'date', 'dateTime']);
+          const val = getField(h, ['value', 'restingHeartRate']);
+          return `<div class="metric-row">
+            <span class="date">${fmtDateShort(date)}</span>
+            <span class="value">${val ? val + ' bpm' : '-'}</span>
+          </div>`;
+        }).join('');
+
+        html += `<div class="metric-card">
+          <h3><span class="dot" style="background: var(--accent-red)"></span> Resting Heart Rate</h3>
+          <div class="metric-list">${rows}</div>
+        </div>`;
+      }
+
+      // Sleep
+      if (sleep && sleep.length > 0) {
+        const rows = sleep.slice(0, 50).map(h => {
+          const date = getField(h, ['datetime', 'date', 'dateTime']);
+          const val = getField(h, ['value', 'duration']);
+          const hrs = val ? (parseFloat(val) / 60).toFixed(1) + ' hrs' : '-';
+          return `<div class="metric-row">
+            <span class="date">${fmtDateShort(date)}</span>
+            <span class="value">${hrs}</span>
+          </div>`;
+        }).join('');
+
+        html += `<div class="metric-card">
+          <h3><span class="dot" style="background: var(--accent-cyan)"></span> Sleep</h3>
+          <div class="metric-list">${rows}</div>
+        </div>`;
+      }
+
+      el.innerHTML = html || '<div class="status-bar">No health metrics loaded.</div>';
+    }
+
+    // -----------------------------------------------------------------------
+    // Refresh button — calls GitHub API directly to trigger the workflow
+    // -----------------------------------------------------------------------
+    // CONFIGURATION: Set these to match your GitHub repo
+    const GITHUB_CONFIG = {
+      owner: 'YOUR_GITHUB_USERNAME',    // ← Change this
+      repo: 'runalyze-dashboard',       // ← Change this if different
+      pat: 'YOUR_GITHUB_PAT',           // ← Change this (fine-grained token with Actions write)
+      workflow: 'fetch_data.yml',
+      branch: 'main',
+    };
+
+    async function triggerRefresh() {
+      const btn = document.getElementById('refreshBtn');
+      const toast = document.getElementById('refreshStatus');
+      const toastText = document.getElementById('refreshStatusText');
+
+      btn.classList.add('loading');
+      toast.classList.add('visible');
+      toastText.textContent = 'Triggering data refresh...';
+
+      const url = `https://api.github.com/repos/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/actions/workflows/${GITHUB_CONFIG.workflow}/dispatches`;
+
+      try {
+        const resp = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${GITHUB_CONFIG.pat}`,
+            'Accept': 'application/vnd.github.v3+json',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ ref: GITHUB_CONFIG.branch }),
+        });
+
+        if (resp.status === 204) {
+          toastText.textContent = '✓ Workflow triggered! Data will update in ~2 min. Auto-reloading...';
+          setTimeout(() => {
+            toastText.textContent = 'Checking for updated data...';
+            pollForUpdate();
+          }, 90000);
+        } else {
+          const body = await resp.text();
+          toastText.textContent = `✗ GitHub API error (${resp.status}): ${body}`;
+          btn.classList.remove('loading');
+          setTimeout(() => toast.classList.remove('visible'), 5000);
+        }
+      } catch (err) {
+        toastText.textContent = '✗ Network error: ' + err.message;
+        btn.classList.remove('loading');
+        setTimeout(() => toast.classList.remove('visible'), 5000);
+      }
+    }
+
+    async function pollForUpdate(attempts = 0) {
+      if (attempts > 10) {
+        document.getElementById('refreshStatusText').textContent = 'Timeout - try reloading manually.';
+        document.getElementById('refreshBtn').classList.remove('loading');
+        setTimeout(() => document.getElementById('refreshStatus').classList.remove('visible'), 5000);
+        return;
+      }
+
+      const meta = await loadJSON('metadata.json');
+      const currentTime = document.getElementById('lastUpdated').dataset.raw;
+
+      if (meta && meta.last_updated && meta.last_updated !== currentTime) {
+        // New data arrived - reload everything
+        document.getElementById('refreshStatusText').textContent = '✓ Data updated! Reloading...';
+        setTimeout(() => location.reload(), 1000);
+      } else {
+        // Not yet - check again in 15s
+        setTimeout(() => pollForUpdate(attempts + 1), 15000);
+      }
+    }
+
+    // -----------------------------------------------------------------------
+    // Init
+    // -----------------------------------------------------------------------
+    async function init() {
+      // Load all data in parallel
+      const [activities, hrv, sleep, restHR, metadata] = await Promise.all([
+        loadJSON('activities.json'),
+        loadJSON('hrv.json'),
+        loadJSON('sleep.json'),
+        loadJSON('resting_hr.json'),
+        loadJSON('metadata.json'),
+      ]);
+
+      // Update last-updated timestamp
+      const updatedEl = document.getElementById('lastUpdated');
+      if (metadata && metadata.last_updated) {
+        const dt = new Date(metadata.last_updated);
+        updatedEl.textContent = 'Updated: ' + dt.toLocaleString('en-GB');
+        updatedEl.dataset.raw = metadata.last_updated;
+      } else {
+        updatedEl.textContent = 'No data yet — click Refresh';
+      }
+
+      // Render
+      renderStats(activities || [], hrv, sleep, restHR);
+      renderActivities(activities);
+      renderMetrics(hrv, sleep, restHR);
+    }
+
+    init();
+  </script>
+</body>
+</html>
