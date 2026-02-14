@@ -4,3 +4,8 @@
 
 [functions]
   node_bundler = "esbuild"
+
+[[redirects]]
+  from = "/api/rhr"
+  to = "/.netlify/functions/runalyze-rhr"
+  status = 200  
