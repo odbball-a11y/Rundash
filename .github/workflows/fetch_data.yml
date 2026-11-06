@@ -2,10 +2,16 @@ name: Fetch Runalyze Data
 
 on:
   schedule:
-    # Every 6 hours (UTC). Runalyze pulls new Garmin activities automatically,
-    # so this keeps the dashboard close to your watch.
-    - cron: '17 */6 * * *'
+    # Every 15 minutes (GitHub's practical minimum; runs can start a few
+    # minutes late). Health metrics are fetched incrementally, so this stays
+    # inside Runalyze's API rate limit. Only commits when data changed.
+    - cron: '*/15 * * * *'
   workflow_dispatch:  # Manual trigger from GitHub UI + the dashboard's Refresh button
+    inputs:
+      full_refresh:
+        description: 'Re-download full health-metric history'
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -17,6 +23,7 @@ concurrency:
 jobs:
   fetch:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
       - name: Checkout repo
@@ -36,6 +43,7 @@ jobs:
           RUNALYZE_USERNAME: ${{ secrets.RUNALYZE_USERNAME }}
           RUNALYZE_PASSWORD: ${{ secrets.RUNALYZE_PASSWORD }}
           RUNALYZE_TOKEN: ${{ secrets.RUNALYZE_TOKEN }}
+          FULL_REFRESH: ${{ inputs.full_refresh }}
         run: python fetch_all_data.py
 
       - name: Commit and push data

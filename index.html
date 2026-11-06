@@ -747,6 +747,26 @@
     }
 
     init();
+
+    // -----------------------------------------------------------------------
+    // Live updates: check for new data every 2 minutes (and when the tab
+    // becomes visible again) and reload when it has changed.
+    // -----------------------------------------------------------------------
+    async function checkForNewData() {
+      try {
+        const resp = await fetch(`${DATA_BASE}/metadata.json?t=${Date.now()}`, { cache: 'no-store' });
+        if (!resp.ok) return;
+        const meta = await resp.json();
+        const current = document.getElementById('lastUpdated').dataset.raw;
+        if (meta && meta.last_updated && current && meta.last_updated !== current) {
+          location.reload();
+        }
+      } catch (e) { /* offline - try again later */ }
+    }
+    setInterval(checkForNewData, 2 * 60 * 1000);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') checkForNewData();
+    });
   </script>
 </body>
 </html>

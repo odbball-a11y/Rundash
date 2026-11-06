@@ -60,7 +60,7 @@ GitHub switches off scheduled workflows after 60 days without repo activity.
 If the dashboard stops updating, open **Actions → Fetch Runalyze Data** and
 click **Enable workflow**. While runs succeed, each data commit keeps it alive.
 
-The workflow runs every 6 hours and can be run on demand
+The workflow checks every 15 minutes (only new records are fetched, and it only commits when something changed) and can be run on demand
 (**Actions → Fetch Runalyze Data → Run workflow**).
 
 ### 4. Hosting

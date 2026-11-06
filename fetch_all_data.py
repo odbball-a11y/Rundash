@@ -49,6 +49,10 @@ OUTPUT_DIR = Path("data")
 RATE_LIMIT_DELAY = 1.5
 MAX_RETRIES = 3
 RETRY_WAIT = 60
+# Health metrics: after the first full download, only the newest pages are
+# fetched and merged in, to stay well inside Runalyze's API rate limit.
+INCREMENTAL_PAGES = int(os.environ.get("RUNALYZE_INCREMENTAL_PAGES", "1"))
+FULL_REFRESH = os.environ.get("FULL_REFRESH", "").lower() in ("1", "true", "yes")
 
 
 # ---------------------------------------------------------------------------
@@ -181,12 +185,12 @@ def api_get(url: str, token: str, params: dict = None):
     return []
 
 
-def fetch_paginated(endpoint_url: str, token: str, label: str) -> list:
-    """Fetch all pages from a paginated API endpoint."""
+def fetch_paginated(endpoint_url: str, token: str, label: str, max_pages: int = None) -> list:
+    """Fetch pages from a paginated API endpoint (all pages unless max_pages)."""
     all_items = []
     page = 1
 
-    while True:
+    while max_pages is None or page <= max_pages:
         print(f"  [{label}] Page {page}...", end=" ", flush=True)
 
         data = api_get(endpoint_url, token, params={"page": page})
@@ -208,6 +212,21 @@ def fetch_paginated(endpoint_url: str, token: str, label: str) -> list:
         time.sleep(RATE_LIMIT_DELAY)
 
     return all_items
+
+
+def merge_by_id(new_items: list, old_items: list) -> list:
+    """Merge records by id (new wins), newest first."""
+    merged = {}
+    for item in list(old_items) + list(new_items):
+        key = item.get("id") if isinstance(item, dict) else None
+        if key is None:
+            key = json.dumps(item, sort_keys=True, default=str)
+        merged[key] = item
+    def sort_key(item):
+        if not isinstance(item, dict):
+            return ""
+        return str(item.get("date_time") or item.get("date") or item.get("created_at") or "")
+    return sorted(merged.values(), key=sort_key, reverse=True)
 
 
 # ---------------------------------------------------------------------------
@@ -279,6 +298,7 @@ def main():
 
     stats = {}
     errors = []
+    changed = []
 
     def keep_or_replace(new_data, filename, key):
         """Save new data, but never overwrite good data with an empty result."""
@@ -286,8 +306,11 @@ def main():
         if not new_data and old:
             print(f"  No new {key} records returned - keeping {len(old)} existing records.")
             new_data = old
-        else:
+        elif json.dumps(new_data, sort_keys=True, default=str) != json.dumps(old, sort_keys=True, default=str):
             save_json(new_data, filename)
+            changed.append(key)
+        else:
+            print(f"  {key}: no changes.")
         stats[key] = len(new_data)
         return new_data
 
@@ -330,9 +353,13 @@ def main():
         if not api_token:
             stats[key] = len(load_existing(filename))
             continue
-        print(f"\nFetching {key}...")
+        old = load_existing(filename)
+        full = FULL_REFRESH or not old
+        print(f"\nFetching {key} ({'full history' if full else 'latest page'})...")
         try:
-            data = fetch_paginated(url, api_token, key)
+            data = fetch_paginated(url, api_token, key, max_pages=None if full else INCREMENTAL_PAGES)
+            if not full:
+                data = merge_by_id(data, old)
             keep_or_replace(data, filename, key)
         except Exception as e:
             print(f"  {key} fetch failed: {e}")
@@ -350,8 +377,11 @@ def main():
     # -------------------------------------------------------------------
     # 3. Metadata
     # -------------------------------------------------------------------
-    print("\nSaving metadata...")
-    save_metadata(stats)
+    if changed:
+        print(f"\nData changed ({', '.join(changed)}) - saving metadata...")
+        save_metadata(stats)
+    else:
+        print("\nNo data changes - metadata left as is.")
 
     # -------------------------------------------------------------------
     # Summary
