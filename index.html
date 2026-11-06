@@ -483,7 +483,15 @@
       const latestRestHR = restHR && restHR.length > 0 ? getField(restHR[0], ['value', 'restingHeartRate']) : null;
       const latestSleep = sleep && sleep.length > 0 ? getField(sleep[0], ['value', 'duration']) : null;
 
+      const weekStart = new Date(); weekStart.setHours(0, 0, 0, 0);
+      weekStart.setDate(weekStart.getDate() - ((weekStart.getDay() + 6) % 7)); // Monday
+      const weekKm = activities.reduce((sum, a) => {
+        const d = new Date(getField(a, ['datetime', 'date', 'startDate', 'dateTime']) || 0);
+        return d >= weekStart ? sum + (parseFloat(getField(a, ['distance', 'distanceInKm', 'distance_km'])) || 0) : sum;
+      }, 0);
+
       const cards = [
+        { label: 'This Week', value: weekKm.toFixed(1) + ' km', sub: 'since Monday', color: 'var(--accent-green, #22c55e)' },
         { label: 'Total Activities', value: activities.length, sub: 'all time' },
         { label: 'Total Distance', value: totalDist.toFixed(0) + ' km', sub: 'all time' },
         { label: 'Total Duration', value: fmtDuration(totalDuration), sub: 'all time' },
@@ -720,9 +728,22 @@
     // -----------------------------------------------------------------------
     // Init
     // -----------------------------------------------------------------------
+    // Live Strava activities from the Netlify backend (instant via webhook).
+    async function loadStrava() {
+      try {
+        const resp = await fetch(`/api/activities?t=${Date.now()}`, { cache: 'no-store' });
+        if (!resp.ok) return null;
+        const data = await resp.json();
+        return data && Array.isArray(data.activities) && data.activities.length ? data : null;
+      } catch (e) { return null; }
+    }
+
+    let stravaStamp = null;
+
     async function init() {
       // Load all data in parallel
-      const [activities, hrv, sleep, restHR, metadata] = await Promise.all([
+      const [strava, runalyzeActivities, hrv, sleep, restHR, metadata] = await Promise.all([
+        loadStrava(),
         loadJSON('activities.json'),
         loadJSON('hrv.json'),
         loadJSON('sleep.json'),
@@ -740,10 +761,18 @@
         updatedEl.textContent = 'No data yet — click Refresh';
       }
 
+      // Prefer live Strava activities; fall back to the Runalyze export.
+      const activities = strava ? strava.activities : runalyzeActivities;
+      if (strava) {
+        stravaStamp = strava.last_updated;
+        updatedEl.textContent = 'Live · runs updated ' + new Date(strava.last_updated).toLocaleString('en-GB');
+      }
+
       // Render
       renderStats(activities || [], hrv, sleep, restHR);
       renderActivities(activities);
       renderMetrics(hrv, sleep, restHR);
+      Object.assign(window, { __hrv: hrv, __sleep: sleep, __restHR: restHR });
     }
 
     init();
@@ -763,9 +792,29 @@
         }
       } catch (e) { /* offline - try again later */ }
     }
-    setInterval(checkForNewData, 2 * 60 * 1000);
+    async function checkForNewRuns() {
+      const strava = await loadStrava();
+      if (strava && strava.last_updated !== stravaStamp) {
+        if (stravaStamp) showToast('New activity: ' + (strava.activities[0]?.title || 'run'));
+        stravaStamp = strava.last_updated;
+        renderStats(strava.activities, window.__hrv, window.__sleep, window.__restHR);
+        renderActivities(strava.activities);
+        document.getElementById('lastUpdated').textContent =
+          'Live · runs updated ' + new Date(strava.last_updated).toLocaleString('en-GB');
+      }
+    }
+
+    function showToast(text) {
+      const toast = document.getElementById('refreshStatus');
+      document.getElementById('refreshStatusText').textContent = text;
+      toast.classList.add('visible');
+      setTimeout(() => toast.classList.remove('visible'), 6000);
+    }
+
+    setInterval(checkForNewData, 2 * 60 * 1000);   // Runalyze health data
+    setInterval(checkForNewRuns, 30 * 1000);       // Strava runs (near instant)
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible') checkForNewData();
+      if (document.visibilityState === 'visible') { checkForNewData(); checkForNewRuns(); }
     });
   </script>
 </body>

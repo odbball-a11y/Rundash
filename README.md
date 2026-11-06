@@ -75,6 +75,27 @@ Create a fine-grained token at https://github.com/settings/tokens with access to
 **Refresh Data**, the dashboard asks for it and stores it in that browser's
 localStorage. **Never put the token in `index.html`**, because this repo is public.
 
+## Live Strava runs (instant updates)
+
+Garmin → Strava → Strava webhook → Netlify function → dashboard (refreshes every 30 s).
+Runalyze still supplies HRV, sleep and resting HR.
+
+1. **Strava app**: https://www.strava.com/settings/api → create an app.
+   *Authorization Callback Domain* = `kempfit.netlify.app`.
+2. **Netlify → Site configuration → Environment variables**, add:
+   | Variable | Value |
+   |----------|-------|
+   | `STRAVA_CLIENT_ID` | from the Strava app page |
+   | `STRAVA_CLIENT_SECRET` | from the Strava app page |
+   | `STRAVA_VERIFY_TOKEN` | any random word |
+   | `ADMIN_KEY` | a long random password only you know |
+   Then **Deploys → Trigger deploy**. (The site must be linked to this repo.)
+3. Open `https://kempfit.netlify.app/api/strava-auth?key=ADMIN_KEY` → approve on Strava.
+4. Open `https://kempfit.netlify.app/api/strava-admin?key=ADMIN_KEY&action=subscribe` (turns on instant updates).
+5. Open `https://kempfit.netlify.app/api/strava-admin?key=ADMIN_KEY&action=backfill` and reload until it says `Done!` (imports your history).
+
+Check everything with `...&action=status`. Route maps are never exposed publicly.
+
 ## Local Development
 
 ```bash
