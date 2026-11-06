@@ -624,19 +624,38 @@
     // -----------------------------------------------------------------------
     // Refresh button — calls GitHub API directly to trigger the workflow
     // -----------------------------------------------------------------------
-    // CONFIGURATION: Set these to match your GitHub repo
+    // CONFIGURATION. The GitHub token is NOT stored in this file (the repo is
+    // public). The first time you press Refresh you are asked for a
+    // fine-grained token (Actions: read & write on this repo only); it is kept
+    // in this browser's localStorage and never committed.
     const GITHUB_CONFIG = {
-      owner: 'odbball-a11y',    // ← Change this
-      repo: 'Rundash',       // ← Change this if different
-      pat: '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',           // ← Change this (fine-grained token with Actions write)
+      owner: 'odbball-a11y',
+      repo: 'Rundash',
       workflow: 'fetch_data.yml',
       branch: 'main',
     };
+    const PAT_KEY = 'rundash_github_pat';
+
+    function getPat(forcePrompt = false) {
+      let pat = null;
+      try { pat = localStorage.getItem(PAT_KEY); } catch (e) {}
+      if (!pat || forcePrompt) {
+        pat = prompt('Paste your GitHub fine-grained token (Actions: read & write on Rundash). It is saved only in this browser.');
+        if (pat) {
+          pat = pat.trim();
+          try { localStorage.setItem(PAT_KEY, pat); } catch (e) {}
+        }
+      }
+      return pat;
+    }
 
     async function triggerRefresh() {
       const btn = document.getElementById('refreshBtn');
       const toast = document.getElementById('refreshStatus');
       const toastText = document.getElementById('refreshStatusText');
+
+      const pat = getPat();
+      if (!pat) return;
 
       btn.classList.add('loading');
       toast.classList.add('visible');
@@ -648,7 +667,7 @@
         const resp = await fetch(url, {
           method: 'POST',
           headers: {
-            'Authorization': `Bearer ${GITHUB_CONFIG.pat}`,
+            'Authorization': `Bearer ${pat}`,
             'Accept': 'application/vnd.github.v3+json',
             'Content-Type': 'application/json',
           },
@@ -663,6 +682,9 @@
           }, 90000);
         } else {
           const body = await resp.text();
+          if (resp.status === 401 || resp.status === 403) {
+            try { localStorage.removeItem(PAT_KEY); } catch (e) {}
+          }
           toastText.textContent = `✗ GitHub API error (${resp.status}): ${body}`;
           btn.classList.remove('loading');
           setTimeout(() => toast.classList.remove('visible'), 5000);

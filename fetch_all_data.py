@@ -69,16 +69,22 @@ def load_env():
 
 
 def get_credentials():
-    """Get Runalyze login credentials."""
+    """Get Runalyze login credentials (optional, needed for activities)."""
     username = os.environ.get("RUNALYZE_USERNAME")
     password = os.environ.get("RUNALYZE_PASSWORD")
-
     if not username or not password:
-        print("Error: RUNALYZE_USERNAME and RUNALYZE_PASSWORD required.")
-        print("Set them as environment variables or in a .env file.")
-        sys.exit(1)
-
+        return None, None
     return username, password
+
+
+def load_existing(filename: str):
+    """Load the previously saved JSON file, if any."""
+    filepath = OUTPUT_DIR / filename
+    try:
+        with open(filepath, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return []
 
 
 def get_api_token():
@@ -105,8 +111,7 @@ def fetch_activities_csv(username: str, password: str) -> list:
     csrf_input = soup.find("input", {"name": "_csrf_token"})
 
     if not csrf_input:
-        print("  Error: Could not find CSRF token on login page.")
-        sys.exit(1)
+        raise RuntimeError("Could not find CSRF token on login page.")
 
     csrf_token = csrf_input["value"]
 
@@ -122,8 +127,7 @@ def fetch_activities_csv(username: str, password: str) -> list:
 
     # Check if login succeeded (redirects to dashboard, not back to login)
     if "/login" in login_resp.url:
-        print("  Error: Login failed. Check your username and password.")
-        sys.exit(1)
+        raise RuntimeError("Login failed. Check RUNALYZE_USERNAME / RUNALYZE_PASSWORD.")
 
     print("  Login successful!")
 
@@ -134,7 +138,13 @@ def fetch_activities_csv(username: str, password: str) -> list:
 
     # Parse CSV
     content = csv_resp.text
-    reader = csv.DictReader(io.StringIO(content))
+    if "<html" in content[:500].lower():
+        raise RuntimeError("Expected CSV but got an HTML page (session not logged in?).")
+    try:
+        dialect = csv.Sniffer().sniff(content[:4096], delimiters=",;\t")
+    except csv.Error:
+        dialect = csv.excel
+    reader = csv.DictReader(io.StringIO(content), dialect=dialect)
     activities = list(reader)
 
     print(f"  Downloaded {len(activities)} activities.")
@@ -263,55 +273,79 @@ def main():
     username, password = get_credentials()
     api_token = get_api_token()
 
+    if not (username and password) and not api_token:
+        print("Error: set RUNALYZE_USERNAME + RUNALYZE_PASSWORD and/or RUNALYZE_TOKEN.")
+        sys.exit(1)
+
     stats = {}
+    errors = []
+
+    def keep_or_replace(new_data, filename, key):
+        """Save new data, but never overwrite good data with an empty result."""
+        old = load_existing(filename)
+        if not new_data and old:
+            print(f"  No new {key} records returned - keeping {len(old)} existing records.")
+            new_data = old
+        else:
+            save_json(new_data, filename)
+        stats[key] = len(new_data)
+        return new_data
 
     # -------------------------------------------------------------------
-    # 1. Activities (via web scraping)
+    # 1. Activities (via web login + CSV export)
     # -------------------------------------------------------------------
-    print("\nFetching activities (web scraping)...")
-    activities = fetch_activities_csv(username, password)
-    stats["activities"] = len(activities)
-
-    save_json(activities, "activities.json")
-    save_csv_copy(activities, "activities.csv")
+    if username and password:
+        print("\nFetching activities (web export)...")
+        try:
+            activities = fetch_activities_csv(username, password)
+            activities = keep_or_replace(activities, "activities.json", "activities")
+            save_csv_copy(activities, "activities.csv")
+        except Exception as e:
+            print(f"  Activities fetch failed: {e}")
+            errors.append(f"activities: {e}")
+            stats["activities"] = len(load_existing("activities.json"))
+    else:
+        print("\nNo RUNALYZE_USERNAME/RUNALYZE_PASSWORD - skipping activities.")
+        stats["activities"] = len(load_existing("activities.json"))
 
     # -------------------------------------------------------------------
     # 2. Health metrics (via API, if token available)
     # -------------------------------------------------------------------
     if api_token:
-        # Test API connection
         print("\nTesting API connection...")
         try:
-            ping = api_get(f"{API_BASE}/ping", api_token)
+            api_get(f"{API_BASE}/ping", api_token)
             print("  API connection OK!")
         except Exception as e:
             print(f"  API connection failed: {e}")
+            errors.append(f"api: {e}")
             api_token = None
 
-    if api_token:
-        # HRV
-        print("\nFetching HRV data...")
-        hrv = fetch_paginated(f"{API_BASE}/metrics/hrv", api_token, "hrv")
-        stats["hrv"] = len(hrv)
-        print(f"  Total HRV records: {len(hrv)}")
-        save_json(hrv, "hrv.json")
+    metrics = [
+        ("hrv", f"{API_BASE}/metrics/hrv", "hrv.json"),
+        ("sleep", f"{API_BASE}/metrics/sleep", "sleep.json"),
+        ("resting_hr", f"{API_BASE}/metrics/heartrate/rest", "resting_hr.json"),
+    ]
+    for key, url, filename in metrics:
+        if not api_token:
+            stats[key] = len(load_existing(filename))
+            continue
+        print(f"\nFetching {key}...")
+        try:
+            data = fetch_paginated(url, api_token, key)
+            keep_or_replace(data, filename, key)
+        except Exception as e:
+            print(f"  {key} fetch failed: {e}")
+            errors.append(f"{key}: {e}")
+            stats[key] = len(load_existing(filename))
 
-        # Sleep
-        print("\nFetching sleep data...")
-        sleep_data = fetch_paginated(f"{API_BASE}/metrics/sleep", api_token, "sleep")
-        stats["sleep"] = len(sleep_data)
-        print(f"  Total sleep records: {len(sleep_data)}")
-        save_json(sleep_data, "sleep.json")
-
-        # Resting heart rate
-        print("\nFetching resting heart rate data...")
-        hr_rest = fetch_paginated(f"{API_BASE}/metrics/heartrate/rest", api_token, "resting HR")
-        stats["resting_hr"] = len(hr_rest)
-        print(f"  Total resting HR records: {len(hr_rest)}")
-        save_json(hr_rest, "resting_hr.json")
-    else:
-        print("\nNo API token found — skipping health metrics.")
-        print("  Set RUNALYZE_TOKEN for HRV, sleep, and resting HR data.")
+    # If nothing at all could be fetched, fail loudly instead of
+    # pretending the data is fresh.
+    if errors and (not api_token) and (not username or any(e.startswith("activities") for e in errors)):
+        print("\nAll data sources failed:")
+        for err in errors:
+            print(f"  - {err}")
+        sys.exit(1)
 
     # -------------------------------------------------------------------
     # 3. Metadata
@@ -328,6 +362,11 @@ def main():
     for key, count in stats.items():
         print(f"  {key}: {count} records")
     print(f"\n  Files saved to: {OUTPUT_DIR.resolve()}")
+
+    if errors:
+        print("\nWarnings:")
+        for err in errors:
+            print(f"  - {err}")
 
 
 if __name__ == "__main__":

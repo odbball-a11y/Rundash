@@ -31,57 +31,49 @@ Runalyze API  ←──  GitHub Actions (daily cron + on-demand)
 
 ## Setup
 
-### 1. Runalyze API Token
+### Garmin
 
-1. Go to [https://runalyze.com/settings/personal-api](https://runalyze.com/settings/personal-api)
-2. Create a token with scopes: **activity read**, **health metrics read**
-3. Note the token
+Connect Garmin to Runalyze once (Runalyze → Settings → Connections → Garmin).
+New watch activities, sleep, HRV and resting HR then flow Garmin → Runalyze →
+this dashboard automatically; no Garmin credentials are stored here.
 
-### 2. GitHub Repository
+### 1. GitHub secrets
 
-1. Create a **private** repo on GitHub and push this code
-2. Go to **Settings → Secrets and variables → Actions**
-3. Add secret: `RUNALYZE_TOKEN` = your Runalyze token
-4. Go to **Settings → Actions → General → Workflow permissions**
-5. Select **Read and write permissions** and save
+**Settings → Secrets and variables → Actions → New repository secret**
 
-### 3. Enable GitHub Pages
+| Secret | Used for |
+|--------|----------|
+| `RUNALYZE_USERNAME` | Runalyze login email (activities CSV export) |
+| `RUNALYZE_PASSWORD` | Runalyze password (activities CSV export) |
+| `RUNALYZE_TOKEN` | Personal API token from https://runalyze.com/settings/personal-api (health metrics read scope) |
 
-1. Go to **Settings → Pages**
-2. Source: **Deploy from a branch**
-3. Branch: **main**, folder: **/ (root)**
-4. Save — your dashboard will be at `https://YOUR_USERNAME.github.io/runalyze-dashboard/`
+Each source is optional and independent: if one fails, the previously saved
+data for it is kept instead of being wiped.
 
-### 4. GitHub PAT (for the refresh button)
+### 2. Workflow permissions
 
-1. Go to [https://github.com/settings/tokens](https://github.com/settings/tokens)
-2. Create a **Fine-grained personal access token**:
-   - Repository access: **Only select repositories** → pick this repo
-   - Permissions: **Actions** → Read and write
-3. Copy the token
-4. Open `index.html` and update the `GITHUB_CONFIG` section near the bottom:
-   ```js
-   const GITHUB_CONFIG = {
-     owner: 'YOUR_GITHUB_USERNAME',
-     repo: 'runalyze-dashboard',
-     pat: 'YOUR_GITHUB_PAT',
-     ...
-   };
-   ```
+**Settings → Actions → General → Workflow permissions → Read and write permissions**
 
-> **Security note:** Since the PAT is in client-side JS, keep the repo **private**. The fine-grained token only has Actions permission on this one repo, so exposure risk is minimal.
+### 3. Make sure the schedule is enabled
 
-### 5. First Data Fetch
+GitHub switches off scheduled workflows after 60 days without repo activity.
+If the dashboard stops updating, open **Actions → Fetch Runalyze Data** and
+click **Enable workflow**. While runs succeed, each data commit keeps it alive.
 
-Go to **Actions** tab → **Fetch Runalyze Data** → **Run workflow**
+The workflow runs every 6 hours and can be run on demand
+(**Actions → Fetch Runalyze Data → Run workflow**).
 
-Once complete, your dashboard will have data.
+### 4. Hosting
 
-### 6. Done!
+Netlify (kempfit.netlify.app) or GitHub Pages deploy straight from `main`; each
+data commit triggers a redeploy.
 
-- Data refreshes daily at 6am UTC automatically
-- Click **Refresh Data** in the dashboard for on-demand updates
-- Dashboard loads instantly from pre-fetched JSON (no API calls in the browser)
+### 5. Refresh button (optional)
+
+Create a fine-grained token at https://github.com/settings/tokens with access to
+**only this repo** and **Actions: Read and write**. The first time you press
+**Refresh Data**, the dashboard asks for it and stores it in that browser's
+localStorage. **Never put the token in `index.html`**, because this repo is public.
 
 ## Local Development
 
