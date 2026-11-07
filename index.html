@@ -233,7 +233,7 @@ border-top-color:#e8dcc8;border-radius:50%;animation:spin .8s linear infinite}
 </div>
 <div class="pills" style="margin-bottom:0">
   <div class="pill"><div class="pill-label">ACWR</div><div class="pill-val mono" id="pACWR" style="color:#22c55e">—</div><div class="pill-sub">0.8–1.3 optimal</div></div>
-  <div class="pill"><div class="pill-label">VO₂max</div><div class="pill-val mono" style="color:#a78bfa" id="pVO2">—</div><div class="pill-sub">5-run avg · est.</div></div>
+  <div class="pill"><div class="pill-label">VO₂max</div><div class="pill-val mono" style="color:#a78bfa" id="pVO2">—</div><div class="pill-sub" id="pVO2sub">5-run avg · est.</div></div>
   <div class="pill"><div class="pill-label">RHR</div><div class="pill-val mono" style="color:#6ee7b7" id="pRHR">—</div><div class="pill-sub" id="pRHRsub">bpm today</div></div>
 </div>
 
@@ -546,7 +546,16 @@ function computeFromCsv(rows, live = null) {
   const sixMonthsAgo = new Date(now); sixMonthsAgo.setMonth(sixMonthsAgo.getMonth()-6);
   const vo2Data = vo2Runs.filter(r => r.dt >= sixMonthsAgo).map(r => ({ d: fmtMD(r.dt), v: round1(r.vo2max) }));
   let last5Vo2 = vo2Runs.length ? round1(vo2Runs.slice(-5).reduce((s,r) => s+r.vo2max, 0) / Math.min(5, vo2Runs.length)) : null;
-  if (!last5Vo2 && live && live.vo2max) last5Vo2 = round1(live.vo2max);
+  let vo2Source = 'est.';
+  // Prefer Garmin's own VO2max (daily wellness) over our pace/HR estimate.
+  if (live && live.vo2Series && live.vo2Series.length) {
+    const series = live.vo2Series.slice().sort((a, b) => String(a.date).localeCompare(String(b.date)));
+    last5Vo2 = round1(series[series.length - 1].value);
+    vo2Source = 'Garmin';
+    vo2Data.length = 0;
+    series.filter(x => new Date(x.date) >= sixMonthsAgo)
+      .forEach(x => vo2Data.push({ d: fmtMD(new Date(x.date)), v: round1(x.value) }));
+  }
 
   // Efficiency
   const effRuns = runs.filter(r => r.dt >= sixMonthsAgo && r.pulseAvg > 0 && r.distance > 1);
@@ -622,7 +631,7 @@ function computeFromCsv(rows, live = null) {
   return {
     fitnessScore, status, delta,
     ctl: round1(latest.ctl), atl: round1(latest.atl), tsb: round1(latest.tsb),
-    acwr, vo2: last5Vo2, rhr: rhrFromApi || null,
+    acwr, vo2: last5Vo2, vo2Source, rhr: rhrFromApi || null,
     totalRuns: runs.length,
     dateMin: fmtMonthYear(runs[0].dt), dateMax: fmtMonthYear(runs[runs.length-1].dt),
     fitnessData, effData, vo2Data, weeklyLoad, segments,
@@ -712,6 +721,7 @@ function renderDashboard() {
   const ae = document.getElementById('pACWR');
   ae.textContent = D.acwr; ae.style.color = (D.acwr>=0.8&&D.acwr<=1.3)?'#22c55e':'#f59e0b';
   document.getElementById('pVO2').textContent = D.vo2 || '—';
+  document.getElementById('pVO2sub').textContent = D.vo2Source === 'Garmin' ? 'Garmin · latest' : '5-run avg · est.';
   document.getElementById('pRHR').textContent = D.rhr || '—';
   document.getElementById('pRHRsub').textContent = D.rhr ? ('bpm · ' + (D.rhrDate || 'latest')) : 'no data yet';
 
