@@ -101,7 +101,8 @@ Metric engine: `src/metrics/` (tests: `npm test`). See `docs/coros-research.md` 
 metrics are exact COROS definitions and which are estimates.
 
 Streams and laps are fetched in the background, up to 8 activities per 15-minute run, newest first.
-The old Runalyze/GitHub Actions files in `data/` are only used as a fallback.
+The old Runalyze files in `data/` are only used by the classic page; the GitHub Actions
+Runalyze workflow has been removed (each data commit would trigger a Netlify production deploy).
 
 ## App
 
