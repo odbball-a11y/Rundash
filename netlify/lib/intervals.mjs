@@ -16,17 +16,33 @@ export function json(data, status = 200) {
 const day = (d) => d.toISOString().slice(0, 10);
 const daysAgo = (n) => day(new Date(Date.now() - n * 86400000));
 
-async function get(path, params) {
+function credentials() {
   const athlete = (env("INTERVALS_ATHLETE_ID") || "").trim();
   const key = (env("INTERVALS_API_KEY") || "").trim();
   if (!athlete || !key) throw new Error("Set INTERVALS_ATHLETE_ID and INTERVALS_API_KEY in Netlify environment variables.");
-  const url = new URL(`${API}/athlete/${encodeURIComponent(athlete)}${path}`);
+  return { athlete, key };
+}
+
+// GET any intervals.icu API path (relative to /api/v1).
+export async function apiGet(path, params) {
+  const { key } = credentials();
+  const url = new URL(`${API}${path}`);
   for (const [k, v] of Object.entries(params || {})) url.searchParams.set(k, v);
   const resp = await fetch(url, {
     headers: { authorization: "Basic " + btoa(`API_KEY:${key}`), accept: "application/json" },
   });
-  if (!resp.ok) throw new Error(`intervals.icu ${path} -> ${resp.status} ${(await resp.text()).slice(0, 200)}`);
+  if (!resp.ok) {
+    const err = new Error(`intervals.icu ${path} -> ${resp.status} ${(await resp.text()).slice(0, 200)}`);
+    err.status = resp.status;
+    throw err;
+  }
   return resp.json();
+}
+
+// GET a path under the configured athlete.
+async function get(path, params) {
+  const { athlete } = credentials();
+  return apiGet(`/athlete/${encodeURIComponent(athlete)}${path}`, params);
 }
 
 // Shape activities for the dashboard (distance in km, durations in seconds).
@@ -102,6 +118,12 @@ export async function sync({ full = false } = {}) {
   if (changed) {
     await s.setJSON("activities", activities);
     await s.setJSON("wellness", wellness);
+  }
+  // Raw intervals.icu rows (all fields) from full syncs: used by /api/inventory and
+  // by later phases that need fields the slim shape drops.
+  if (firstRun) {
+    await s.setJSON("raw_activities", acts || []);
+    await s.setJSON("raw_wellness", well || []);
   }
   await s.setJSON("meta", meta);
   return { changed, firstRun, ...meta };

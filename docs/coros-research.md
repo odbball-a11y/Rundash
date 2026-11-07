@@ -31,14 +31,14 @@ Personalized Marathon Plans · Explore Page · Heart Rate Recovery · coros.com 
 | Hosting | Netlify site `kempfit`, deploys from `odbball-a11y/Rundash` `main` |
 | Data source | Garmin → intervals.icu (official Garmin link) → Netlify |
 | Ingestion | `netlify/functions/intervals-sync.mjs` scheduled every 5 min; incremental 14-day window, full history at least hourly |
-| Storage | Netlify Blobs store `intervals`: `activities` (slim summary per activity), `wellness` (daily rows), `meta` |
-| API | `GET /api/data` (dashboard JSON), `GET /api/sync` (pull now, rate-limited) |
+| Storage | Netlify Blobs store `intervals`: `activities` (slim summary), `wellness` (daily rows), `raw_activities` / `raw_wellness` (all fields, refreshed on full syncs), `detail/{id}` (streams + intervals per activity), `detail_index`, `meta` |
+| API | `GET /api/data` (dashboard JSON), `GET /api/sync` (pull now, rate-limited), `GET /api/activity?id=` (streams + laps; GPS only with ADMIN_KEY), `GET /api/inventory` (field names/counts) |
 | Front end | `index.html` — single-file fitness-ring dashboard (Chart.js), metrics computed in the browser; `details.html` — activity table + health lists |
 | Legacy | `fetch_all_data.py` + `.github/workflows/fetch_data.yml` (Runalyze → `data/*.json`) — fallback only; GitHub Actions runs are stuck |
 | Secrets | `INTERVALS_ATHLETE_ID`, `INTERVALS_API_KEY` in Netlify env; none in code |
 
 **Limits for the COROS target:** no router or component system; metrics live in page JS
-(untestable, unversioned); only activity *summaries* are stored (no streams, laps, GPS);
+(untestable, unversioned); streams + laps now ingested (Phase 0) but not yet used by the UI;
 no database for plans, workouts, labels, settings, notes; no append-only history of
 daily metric snapshots.
 
@@ -181,8 +181,9 @@ Every value carries `algorithmVersion` and inputs so it can be traced and recalc
 
 ## 5. Prioritised implementation plan
 
-0. **Field inventory + data model** — inventory endpoint; add streams + laps ingestion; database
-   (Supabase/Postgres) for settings, plans, workouts, events, labels, notes, snapshots.
+0. **Field inventory + data model** — inventory endpoint ✅; streams + laps ingestion ✅; user data
+   (settings, plans, workouts, events, labels, notes, snapshots) in Netlify Blobs for the single-athlete
+   app, moving to Postgres only if the team module needs it.
 1. **Metric engine** — standalone, unit-tested module with versioned algorithms (section 4);
    calibration fixtures from COROS worked examples; side-by-side with intervals.icu load/CTL.
 2. **App shell** — installable responsive web app (React + router), bottom nav on phone,

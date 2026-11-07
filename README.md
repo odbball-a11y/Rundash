@@ -87,7 +87,14 @@ Gives runs, HRV, sleep, resting HR and fitness/fatigue/form. No GitHub Actions n
 4. **Deploys → Trigger deploy**, then open `https://kempfit.netlify.app/api/sync` once
    to import your history. After that it updates on its own.
 
-Endpoints: `/api/data` (dashboard JSON), `/api/sync` (pull now, max once a minute).
+Endpoints:
+- `/api/data`: dashboard JSON
+- `/api/sync`: pull now (max once a minute; `?full=1` re-reads all history)
+- `/api/activity?id=…`: one activity with second-by-second streams and laps/intervals
+  (GPS is left out unless `&key=ADMIN_KEY` is given; set `ADMIN_KEY` in Netlify to use it)
+- `/api/inventory`: which fields intervals.icu sends for this athlete (names and counts only)
+
+Streams and laps are fetched in the background, up to 8 activities per 5-minute run, newest first.
 The old Runalyze/GitHub Actions files in `data/` are only used as a fallback.
 
 ## Local Development
