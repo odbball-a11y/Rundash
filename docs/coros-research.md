@@ -202,8 +202,14 @@ Every value carries `algorithmVersion` and inputs so it can be traced and recalc
    algorithm version + thresholds, computed every 5 min, `GET /api/metrics`, append-only daily
    `snapshots`. Tests pin COROS zone tables, load calibration (99/199/295), Intensity Trend screenshots,
    status bands, Effort Accuracy example and Daniels race times.
-2. **App shell** — installable responsive web app (React + router), bottom nav on phone,
-   top tabs + left rail on desktop, component library (section 6). All screens stubbed.
+2. **App shell** ✅ — `web/` (React + Vite, hash routes), installable (manifest + icons). Phone: Progress ·
+   Activities · Explore · Profile; desktop: Dashboard · EvoLab Metrics · Activity List · Calendar. Built now:
+   Progress (customisable cards → detail pages for Training Status, Load, Recovery, Running Fitness, Race
+   Predictor, RHR, Sleep, VO₂max), Activities list (type/date/keyword filters, totals), Activity detail
+   (summary, up to 4 overlaid metrics, time/distance axis, drag-to-zoom, laps with Best/rest, 1 km splits,
+   time in zones, TE/focus/efficiency), Hub dashboard, EvoLab charts, activity table, month calendar of
+   completed runs, Profile (zones, records, data & sync). Stubs: Explore, workout/plan libraries, planned
+   calendar items, maps. Classic ring page kept at `/classic.html`.
 3. **Progress dashboard** (A2–A12) with card → detail navigation.
 4. **Training Status / load analytics** (A6, E1, E3, E7, H3, H5) and **Recovery** (A7).
 5. **Activities** list + full analysis (A13, A14, L1, L2), PRs (A15).

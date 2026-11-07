@@ -103,6 +103,12 @@ metrics are exact COROS definitions and which are estimates.
 Streams and laps are fetched in the background, up to 8 activities per 5-minute run, newest first.
 The old Runalyze/GitHub Actions files in `data/` are only used as a fallback.
 
+## App
+
+The front end is a React app in `web/` built with Vite into `dist/` (Netlify runs `npm run build`).
+`npm run dev` serves it locally and proxies `/api` to the live site. The earlier pages are kept at
+`/classic.html` (fitness ring) and `/details.html` (run table).
+
 ## Local Development
 
 ```bash

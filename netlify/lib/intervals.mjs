@@ -155,6 +155,8 @@ export async function dashboardData() {
     sleep: pick("sleepSecs", (v) => Math.round(v / 60)), // minutes
     vo2max: vo2 ? vo2.vo2max : null,
     vo2Series: pick("vo2max"),
+    steps: pick("steps"),
+    sleepScore: pick("sleepScore"),
     fitness: latest
       ? { date: latest.id, ctl: latest.ctl, atl: latest.atl, tsb: latest.ctl - latest.atl }
       : null,
