@@ -14,8 +14,15 @@ export default async (req) => {
   let m = q.get("fresh") === "1" ? null : await store().get(K.latest, { type: "json" });
   const stale = m && Date.now() - Date.parse(m.generatedAt) > MAX_AGE_MS;
   if (!m || stale) {
-    await updateActivityMetrics({ budgetMs: 8000 });
-    m = await computeAndStore();
+    // Keep well inside the ~10 s request limit: analyse what fits, then compute; if that
+    // fails, fall back to the previous cached result rather than erroring.
+    try {
+      await updateActivityMetrics({ budgetMs: 5000 });
+      m = await computeAndStore();
+    } catch (e) {
+      if (!m) throw e;
+      m.warning = `Showing cached metrics: ${e.message}`;
+    }
   }
   // Keep the public response light: drop per-day rows older than a year unless asked.
   if (q.get("full") !== "1" && m.series) m.series = m.series.slice(-400);

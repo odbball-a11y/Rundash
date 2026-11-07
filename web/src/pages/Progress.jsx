@@ -40,8 +40,8 @@ export function useRefresh() {
     setBusy(true);
     const r = await refreshAll();
     setBusy(false);
-    setMsg(r?.error ? `Sync failed: ${r.error}` : r?.changed ? "Updated with new data" : "Up to date");
-    setTimeout(() => setMsg(""), 3000);
+    setMsg(r.error ? `Refresh failed: ${r.error}` : r.changed ? "Updated with new data" : "Up to date");
+    setTimeout(() => setMsg(""), r.error ? 8000 : 3000);
   };
   const button = <button className="iconbtn" onClick={run} disabled={busy} aria-label="Refresh"><Icon name="refresh" size={16} />{busy ? "Syncing…" : "Refresh"}</button>;
   return { button, toast: msg && <div className="toast" role="status">{msg}</div> };

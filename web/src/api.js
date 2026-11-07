@@ -41,10 +41,23 @@ export function useApi(url) {
 }
 
 // Refresh: pull from intervals.icu, then reload metrics + data everywhere.
+// Never throws: returns { ok, changed, error } so the button can say what happened.
 export async function refreshAll() {
-  const r = await fetch("/api/sync", { cache: "no-store" }).then((x) => x.json()).catch(() => ({}));
-  await Promise.all([fetchCached("/api/data", { force: true }), fetchCached("/api/metrics", { force: true })]);
-  return r;
+  let sync;
+  try {
+    const r = await fetch("/api/sync", { cache: "no-store" });
+    sync = await r.json().catch(() => ({ error: `Sync returned HTTP ${r.status}` }));
+    if (!r.ok && !sync.error) sync.error = `Sync returned HTTP ${r.status}`;
+  } catch (e) {
+    sync = { error: `Couldn't reach the server (${e.message})` };
+  }
+  const results = await Promise.allSettled([
+    fetchCached("/api/data", { force: true }),
+    fetchCached("/api/metrics", { force: true }),
+  ]);
+  const failed = results.find((x) => x.status === "rejected");
+  const error = sync?.error || (failed ? `Metrics are still being recalculated - try again in a minute (${failed.reason?.message || "error"})` : null);
+  return { ok: !error, changed: !!sync?.changed, error };
 }
 
 // Merged view used by most screens.
