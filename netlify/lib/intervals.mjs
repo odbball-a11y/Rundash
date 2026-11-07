@@ -45,7 +45,8 @@ export function slimActivity(a) {
     heartRateMax: a.max_heartrate ? Math.round(a.max_heartrate) : null,
     elevation: a.total_elevation_gain ?? null,
     trimp: a.icu_training_load ?? a.trimp ?? null,
-    vo2max: a.icu_vo2max ?? null,
+    vo2max: a.icu_vo2max ?? a.vo2max ?? null,
+    decoupling: a.decoupling ?? null,
     source: "intervals.icu",
   };
 }
@@ -118,6 +119,7 @@ export async function dashboardData() {
   const pick = (field, f = (v) => v) =>
     w.filter((d) => d[field] != null).map((d) => ({ date: d.id, value: f(d[field]) }));
   const latest = w.find((d) => d.ctl != null) || null;
+  const vo2 = w.find((d) => d.vo2max != null);
   return {
     last_updated: meta?.last_updated || null,
     last_checked: meta?.last_checked || null,
@@ -125,6 +127,7 @@ export async function dashboardData() {
     hrv: pick("hrv"),
     restHR: pick("restingHR"),
     sleep: pick("sleepSecs", (v) => Math.round(v / 60)), // minutes
+    vo2max: vo2 ? vo2.vo2max : null,
     fitness: latest
       ? { date: latest.id, ctl: latest.ctl, atl: latest.atl, tsb: latest.ctl - latest.atl }
       : null,
