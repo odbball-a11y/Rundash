@@ -65,7 +65,9 @@ export async function sync({ full = false } = {}) {
     s.get("activities", { type: "json" }),
     s.get("wellness", { type: "json" }),
   ]);
-  const firstRun = full || !oldActs || !oldWell;
+  // Full history until we actually have some, so a sync that ran before
+  // Garmin finished importing doesn't leave history permanently missing.
+  const firstRun = full || !oldActs?.length || !oldWell?.length;
   const oldest = firstRun ? "2000-01-01" : daysAgo(14);
   const newest = day(new Date(Date.now() + 86400000));
 
