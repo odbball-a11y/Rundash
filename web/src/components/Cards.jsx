@@ -47,7 +47,7 @@ export function RecoveryCard({ m, to = "/progress/recovery" }) {
   const r = m?.current?.recovery;
   return (
     <Card title="Recovery" to={to} info={<Info title="Recovery" method={M(m, "recovery")}>
-      <p>How recovered you are from recent training, based on your recent load and Base Fitness. It rises quickly at first and slows near 100%. Sleep and HRV are not part of it.</p>
+      <p>How recovered you are from recent training. Each session adds recovery time in proportion to how hard it was compared with your fitness (Base Fitness), up to 96 hours. The percentage rises quickly when you are tired and slows near 100%. Sleep and HRV are not part of it.</p>
       <p>0–19% Exhausted · 20–69% Fatigued · 70–89% Normal · 90–100% Fresh. The timer is capped at 96 hours.</p>
     </Info>}>
       <div className="row">

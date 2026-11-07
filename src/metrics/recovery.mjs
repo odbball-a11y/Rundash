@@ -1,32 +1,36 @@
 // Recovery % and timer (est.). COROS: based on Base Fitness, Training Load and remaining
-// energy since last exercise; not sleep/HRV; rises fast when low, slows near 100%;
+// energy since the last exercise; not sleep/HRV; rises quickly when low and slows near 100%;
 // timer capped at 96 h. Bands (exact): 0-19 Exhausted, 20-69 Fatigued, 70-89 Normal,
 // 90-100 Fresh. Timer advice bands (exact): 0-29 rest, 30-89 easy, 90-100 hard.
 //
-// Model: fatigue deficit D (0-100) decays exponentially (time constant TAU_H scaled by
-// fitness); each activity raises it: D = 100 - (100 - D) * exp(-TL / (C * BF)).
+// Model (v1.2.1): each activity adds recovery hours proportional to its load relative to
+// fitness, h = HOURS_PER_RATIO * TL / BF (capped at 96 h in total). Remaining hours R count
+// down in real time. Recovery % = 100 - 100 * (R / 96)^P with P > 1, so the percentage climbs
+// fastest when you are tired and slows as you approach 100%.
+//   e.g. BF 37: 20-min run TL 62  -> ~17 h, ~86% straight after
+//               55-min hard TL 200 -> ~54 h, ~48%
+//               long run TL 300    -> ~81 h, ~18%
 import { clamp } from "./util.mjs";
 
-export const TAU_H = 12;      // hours at Base Fitness 60
-export const C = 1.8;
+export const HOURS_PER_RATIO = 10;
 export const MAX_TIMER_H = 96;
+export const P = 1.15;
 
-const tau = (bf) => TAU_H * clamp(Math.sqrt(60 / Math.max(bf || 0, 10)), 0.6, 1.8);
+export const recoveryHours = (load, bf) => clamp((HOURS_PER_RATIO * (load || 0)) / Math.max(bf || 0, 15), 0, MAX_TIMER_H);
+export const pctFromRemaining = (R) => Math.round(100 - 100 * Math.pow(clamp(R, 0, MAX_TIMER_H) / MAX_TIMER_H, P));
 
 // events: [{ t: ms epoch (end of activity), load, bf }]. Returns state at `now`.
 export function recoveryAt(events, now) {
-  let D = 0, last = null, bfLast = 60;
+  let R = 0, last = null;
   for (const e of [...events].sort((a, b) => a.t - b.t)) {
     if (e.t > now) break;
-    if (last != null) D *= Math.exp(-(e.t - last) / 3600000 / tau(bfLast));
-    D = 100 - (100 - D) * Math.exp(-(e.load || 0) / (C * Math.max(e.bf || 0, 10)));
-    last = e.t; bfLast = e.bf || bfLast;
+    if (last != null) R = Math.max(0, R - (e.t - last) / 3600000);
+    R = Math.min(MAX_TIMER_H, R + recoveryHours(e.load, e.bf));
+    last = e.t;
   }
-  if (last != null) D *= Math.exp(-(now - last) / 3600000 / tau(bfLast));
-  const pct = Math.round(100 - D);
-  // hours until >= 99%
-  const hoursToFull = D <= 1 ? 0 : Math.min(MAX_TIMER_H, Math.ceil(tau(bfLast) * Math.log(D / 1)));
-  return { pct, hoursToFull, state: recoveryState(pct), advice: recoveryAdvice(pct) };
+  if (last != null) R = Math.max(0, R - (now - last) / 3600000);
+  const pct = pctFromRemaining(R);
+  return { pct, hoursToFull: Math.ceil(R), state: recoveryState(pct), advice: recoveryAdvice(pct) };
 }
 
 export const recoveryState = (p) => (p < 20 ? "Exhausted" : p < 70 ? "Fatigued" : p < 90 ? "Normal" : "Fresh");

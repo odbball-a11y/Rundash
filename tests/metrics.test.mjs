@@ -79,14 +79,18 @@ test("Efficiency and Training Effect labels", () => {
   assert.equal(teLabel(5.2), "Overreaching");
 });
 
-test("Recovery drops after load, recovers over time, timer capped at 96 h", () => {
-  const t0 = Date.parse("2026-11-01T10:00:00Z");
-  const r0 = recoveryAt([{ t: t0, load: 200, bf: 60 }], t0);
-  assert.ok(r0.pct < 70, `after hard run ${r0.pct}`);
-  const r1 = recoveryAt([{ t: t0, load: 200, bf: 60 }], t0 + 24 * 3600e3);
-  assert.ok(r1.pct > r0.pct);
-  const r2 = recoveryAt([{ t: t0, load: 2000, bf: 60 }], t0);
-  assert.ok(r2.hoursToFull <= 96);
+test("Recovery: short easy run recovers within a day, hard runs take days, capped at 96 h", () => {
+  const t0 = Date.parse("2026-11-06T17:30:00Z");
+  const easy = recoveryAt([{ t: t0, load: 62, bf: 37 }], t0);              // 2-mile run
+  assert.ok(easy.pct >= 80 && easy.hoursToFull <= 20, `easy ${easy.pct}% ${easy.hoursToFull} h`);
+  const next = recoveryAt([{ t: t0, load: 62, bf: 37 }], t0 + 27 * 3600e3);
+  assert.equal(next.pct, 100); assert.equal(next.hoursToFull, 0);
+  const hard = recoveryAt([{ t: t0, load: 200, bf: 37 }], t0);
+  assert.ok(hard.pct < 60 && hard.hoursToFull > 40, `hard ${hard.pct}% ${hard.hoursToFull} h`);
+  const later = recoveryAt([{ t: t0, load: 200, bf: 37 }], t0 + 24 * 3600e3);
+  assert.ok(later.pct > hard.pct);
+  const huge = recoveryAt([{ t: t0, load: 2000, bf: 37 }], t0);
+  assert.equal(huge.hoursToFull, 96); assert.equal(huge.state, "Exhausted");
   assert.equal(recoveryState(10), "Exhausted");
   assert.equal(recoveryState(95), "Fresh");
 });
@@ -129,7 +133,7 @@ test("computeAll end-to-end on synthetic history", () => {
   }
   const out = computeAll({ activities: acts, actMetrics, wellness: [{ id: "2026-10-30", vo2max: 47, restingHR: 50 }],
     settings: { rest: 50, max: 190, lthr: 168, tpSecPerKm: 270 }, today: "2026-10-31", now: Date.parse("2026-10-31T12:00:00") });
-  assert.equal(out.algorithmVersion, "1.2.0");
+  assert.equal(out.algorithmVersion, "1.2.1");
   assert.ok(out.current.baseFitness > 0);
   assert.ok(out.current.status);
   assert.equal(out.current.vo2Source, "Garmin");
