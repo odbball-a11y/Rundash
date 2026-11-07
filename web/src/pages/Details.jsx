@@ -68,28 +68,57 @@ export function TrainingLoadDetail() {
 }
 
 export function RecoveryDetail() {
-  return <Wrap title="Recovery">{({ m }) => {
-    const r = m.current?.recovery || {};
-    return <div className="stack">
-      <Card title="Current recovery">
-        <div className="row" style={{ flexWrap: "wrap" }}>
-          <Gauge value={r.pct} color={RECOVERY_COLOR[r.state]} size={170} sub="%" />
-          <div>
-            <div style={{ fontSize: 24, fontWeight: 700, color: RECOVERY_COLOR[r.state] }}>{r.state}</div>
-            <div className="muted">{r.advice}</div>
-            <div style={{ marginTop: 8 }}>{r.hoursToFull ? `About ${r.hoursToFull} hours to full recovery` : "Fully recovered"}<Est /></div>
-          </div>
-        </div>
-      </Card>
-      <Card title="What the levels mean">
-        <table className="tbl"><tbody>
-          {[["90–100%", "Fresh", "Ready for hard training"], ["70–89%", "Normal", "Ready for easy or moderate training"], ["20–69%", "Fatigued", "Easy running only"], ["0–19%", "Exhausted", "Rest"]].map(([p, s, t]) =>
-            <tr key={s}><td className="num">{p}</td><td style={{ color: RECOVERY_COLOR[s], fontWeight: 600 }}>{s}</td><td className="muted">{t}</td></tr>)}
-        </tbody></table>
-        <p className="lbl">Based on your recent Training Load and Base Fitness. Sleep, HRV and muscle soreness aren't included, so listen to your body.</p>
-      </Card>
-    </div>;
-  }}</Wrap>;
+  return <Wrap title="Recovery">{({ m, data }) => <RecoveryBody m={m} data={data} />}</Wrap>;
+}
+
+function RecoveryBody({ m, data }) {
+  const [method, setMethod] = C.useRecoveryMethod();
+  const co = m.current?.recovery, kf = m.current?.recoveryTime;
+  if (!co && !kf) return <Card><div className="na">Needs runs with heart rate</div></Card>;
+  const acts = Object.fromEntries((data?.activities || []).map((a) => [a.id, a]));
+  const recent = (m.activities || []).filter((a) => a.load).slice(-8).reverse();
+  const sig = kf?.signals || {};
+  const hist = (co?.history || []).map((h, i) => ({ date: h.date, co: h.hours, kf: kf?.history?.[i]?.hours ?? null }));
+  const trainingDiff = kf && co ? kf.baseHours - co.hoursToFull : 0;
+  return <div className="grid">
+    <div className="span2"><C.RecoveryCard m={m} to={null} /></div>
+    <Card title="Why the two methods differ">
+      <table className="tbl"><tbody>
+        <tr><td>COROS method <div className="lbl">Training Load ÷ Base Fitness</div></td><td className="num" style={{ textAlign: "right", fontWeight: 600 }}>{co?.hoursToFull ?? "—"} h</td></tr>
+        <tr><td>Kemp Fit, from training <div className="lbl">EPOC → Training Effect{kf?.lastSession ? ` (last run TE ${kf.lastSession.te})` : ""}</div></td><td className="num" style={{ textAlign: "right", fontWeight: 600 }}>{kf?.baseHours ?? "—"} h</td></tr>
+        {(kf?.modifiers || []).map((x) => <tr key={x.key}><td>{x.label}<div className="lbl">{x.detail}</div></td><td className="num" style={{ textAlign: "right", fontWeight: 600, color: x.hours > 0 ? "var(--orange)" : "var(--green)" }}>{x.hours > 0 ? "+" : ""}{x.hours} h</td></tr>)}
+        <tr><td><b>Kemp Fit method</b></td><td className="num" style={{ textAlign: "right", fontWeight: 700 }}>{kf?.hours ?? "—"} h</td></tr>
+      </tbody></table>
+      <p className="lbl">{Math.abs(trainingDiff) >= 4 ? (trainingDiff > 0
+        ? "Kemp Fit rates your recent runs as harder than the COROS method does: time near or above threshold heart rate builds EPOC quickly."
+        : "Kemp Fit rates your recent runs as easier than the COROS method does: steady running below threshold builds little EPOC.")
+        : "From training alone, the two methods agree closely."} Today's signals: sleep {sig.sleepMin ? `${Math.floor(sig.sleepMin / 60)}h ${String(sig.sleepMin % 60).padStart(2, "0")}m` : "—"}{sig.sleepScore != null ? ` (score ${sig.sleepScore})` : ""} · resting HR {sig.restingHR ?? "—"} bpm.</p>
+      {kf?.ignoredModifiers?.length > 0 && <p className="lbl">Already recovered from training, so these didn't shorten it further: {kf.ignoredModifiers.map((x) => x.label.toLowerCase()).join(", ")}.</p>}
+    </Card>
+    <Card title="Hours till full recovery at 7am (14 days)">
+      <BarChart legend labels={hist.map((h) => fmtDate(h.date, { weekday: "narrow", day: "numeric" }))} series={[
+        { label: "COROS method", data: hist.map((h) => h.co), color: method === "coros" ? "#22d3ee" : "#22d3ee77" },
+        { label: "Kemp Fit (training)", data: hist.map((h) => h.kf), color: method === "kempfit" ? "#f97316" : "#f9731677" },
+      ]} />
+    </Card>
+    <Card title="Recent sessions" className="span2">
+      <div className="scrollx"><table className="tbl num">
+        <thead><tr><th>Date</th><th>Run</th><th>Training Load</th><th>COROS adds</th><th>Peak EPOC</th><th>Aerobic TE</th><th>Kemp Fit adds</th><th>Felt</th></tr></thead>
+        <tbody>{recent.map((a) => <tr key={a.id}>
+          <td>{fmtDate(a.date)}</td>
+          <td><Link to={`/activities/${a.id}`} style={{ color: "var(--cyan)" }}>{acts[a.id]?.title || "Run"}</Link></td>
+          <td>{a.load}</td><td>{a.corosRecoveryHours != null ? `${a.corosRecoveryHours} h` : "—"}</td>
+          <td>{a.peakEpoc ?? "—"}</td><td>{a.trainingEffect?.aerobic ?? "—"} <span className="lbl">{a.trainingEffect?.aerobicLabel}</span></td>
+          <td>{a.recoveryHours != null ? `${a.recoveryHours} h` : "—"}</td><td>{a.feel ? FEEL_LABELS[a.feel] : <Link to={`/activities/${a.id}`} className="lbl">rate</Link>}</td>
+        </tr>)}</tbody>
+      </table></div>
+    </Card>
+    <Card title="How each method works" className="span2">
+      <p className="muted"><b>COROS method.</b> Uses the inputs COROS describes: your Training Load, Base Fitness and the time since your last run. Each run adds recovery time in proportion to its load compared with your fitness; it counts down to 0, capped at 96 h. The % is calibrated to COROS's own example (64% with 33 h left). COROS doesn't use sleep or HRV for this.</p>
+      <p className="muted"><b>Kemp Fit method.</b> Each run's heart rate is converted to effort relative to your threshold and accumulated into EPOC (exercise "after-burn"), following Firstbeat's published model. Peak EPOC compared with how much you usually train (activity class {kf?.activityClass ?? "—"}) gives the aerobic Training Effect, which sets the hours (TE 1 ≈ 2 h, 2 ≈ 6 h, 3 ≈ 14 h, 4 ≈ 28 h, 5 ≈ 54 h). Shorter sleep or a resting heart rate above your 30-day normal add time; good sleep, a low resting heart rate and feeling good take time off. Same % scale and levels as the COROS method.</p>
+      <p className="lbl">Both are estimates. Neither COROS, Garmin nor Firstbeat publish their recovery formulas, and neither method can tell whether muscles, tendons or your nervous system have fully recovered.</p>
+    </Card>
+  </div>;
 }
 
 export function RunningFitnessDetail() {
@@ -156,46 +185,3 @@ export function Vo2Detail() {
   return <Wrap title="VO₂max">{({ m, data }) => <C.VO2Card m={m} data={data} to={null} />}</Wrap>;
 }
 
-export function RecoveryTimeDetail() {
-  return <Wrap title="Recovery Time">{({ m, data }) => {
-    const r = m.current?.recoveryTime;
-    if (!r) return <Card><div className="na">Needs runs with heart rate</div></Card>;
-    const acts = Object.fromEntries((data?.activities || []).map((a) => [a.id, a]));
-    const recent = (m.activities || []).filter((a) => a.trainingEffect).slice(-8).reverse();
-    const sig = r.signals || {};
-    return <div className="grid">
-      <div className="span2"><C.RecoveryTimeCard m={m} to={null} /></div>
-      <Card title="Why this estimate">
-        <table className="tbl"><tbody>
-          <tr><td>Recent training {r.lastSession ? <span className="lbl">(last run: TE {r.lastSession.te}, +{r.lastSession.hours} h)</span> : ""}</td><td className="num" style={{ textAlign: "right", fontWeight: 600 }}>{r.baseHours} h</td></tr>
-          {r.modifiers.map((x) => <tr key={x.key}><td>{x.label}<div className="lbl">{x.detail}</div></td><td className="num" style={{ textAlign: "right", fontWeight: 600, color: x.hours > 0 ? "var(--orange)" : "var(--green)" }}>{x.hours > 0 ? "+" : ""}{x.hours} h</td></tr>)}
-          <tr><td><b>Estimated recovery time</b></td><td className="num" style={{ textAlign: "right", fontWeight: 700 }}>{r.hours} h</td></tr>
-        </tbody></table>
-        {r.ignoredModifiers?.length > 0 && <p className="lbl">You're already recovered from training, so these didn't shorten it further: {r.ignoredModifiers.map((x) => x.label.toLowerCase()).join(", ")}.</p>}
-        <p className="lbl">Today's signals: sleep {sig.sleepMin ? `${Math.floor(sig.sleepMin / 60)}h ${String(sig.sleepMin % 60).padStart(2, "0")}m` : "—"}{sig.sleepScore != null ? ` (score ${sig.sleepScore})` : ""} · resting HR {sig.restingHR ?? "—"} bpm. Not available from your watch: HRV, stress.</p>
-      </Card>
-      <Card title="Morning recovery time (14 days)">
-        <BarChart labels={r.history.map((h) => fmtDate(h.date, { weekday: "narrow", day: "numeric" }))} series={[{ label: "Hours at 7am", data: r.history.map((h) => h.hours), color: "#f97316" }]} />
-        <p className="lbl">From training only (sleep and heart-rate adjustments apply to today).</p>
-      </Card>
-      <Card title="Recent sessions" className="span2">
-        <div className="scrollx"><table className="tbl num">
-          <thead><tr><th>Date</th><th>Run</th><th>Peak EPOC</th><th>Aerobic TE</th><th>Adds</th><th>Felt</th></tr></thead>
-          <tbody>{recent.map((a) => <tr key={a.id}>
-            <td>{fmtDate(a.date)}</td>
-            <td><Link to={`/activities/${a.id}`} style={{ color: "var(--cyan)" }}>{acts[a.id]?.title || "Run"}</Link></td>
-            <td>{a.peakEpoc ?? "—"}</td><td>{a.trainingEffect?.aerobic} <span className="lbl">{a.trainingEffect?.aerobicLabel}</span></td>
-            <td>{a.recoveryHours != null ? `${a.recoveryHours} h` : "—"}</td><td>{a.feel ? FEEL_LABELS[a.feel] : <Link to={`/activities/${a.id}`} className="lbl">rate</Link>}</td>
-          </tr>)}</tbody>
-        </table></div>
-      </Card>
-      <Card title="How it works" className="span2">
-        <p className="muted">1. <b>Training stress.</b> Each run's heart rate is converted to %VO₂max and accumulated into EPOC (exercise "after-burn"), following Firstbeat's published EPOC model. Your peak EPOC, compared with how much you usually train (activity class {r.activityClass}), gives the aerobic Training Effect.</p>
-        <p className="muted">2. <b>Recovery hours.</b> Each session adds time by Training Effect (TE 1 ≈ 2 h, 2 ≈ 6 h, 3 ≈ 14 h, 4 ≈ 28 h, 5 ≈ 54 h). Hours add up across sessions and count down, up to 96 h.</p>
-        <p className="muted">3. <b>Your body today.</b> Shorter sleep or a resting heart rate above your 30-day normal add time; good sleep, a low resting heart rate and feeling good after your run take time off.</p>
-        <p className="lbl">Kemp Fit's own model: Firstbeat, Garmin and COROS don't publish their recovery formulas. It will learn from how you actually respond in a later version. It is not a medical measurement.</p>
-      </Card>
-      <div className="span2"><C.RecoveryCard m={m} to="/progress/recovery" /></div>
-    </div>;
-  }}</Wrap>;
-}

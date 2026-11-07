@@ -24,7 +24,6 @@ export function HubDashboard() {
           <C.ZonesCard m={m} kind="hr" />
           <C.ZonesCard m={m} kind="pace" />
           <C.RecoveryCard m={m} />
-          <C.RecoveryTimeCard m={m} />
           <C.HrvCard />
           <C.WeeklyActivityCard data={data} />
           <C.RacePredictorCard m={m} />

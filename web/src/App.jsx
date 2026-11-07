@@ -49,7 +49,7 @@ export default function App() {
           <Route path="/progress/training-status" element={<D.TrainingStatusDetail />} />
           <Route path="/progress/training-load" element={<D.TrainingLoadDetail />} />
           <Route path="/progress/recovery" element={<D.RecoveryDetail />} />
-          <Route path="/progress/recovery-time" element={<D.RecoveryTimeDetail />} />
+          <Route path="/progress/recovery-time" element={<Navigate to="/progress/recovery" replace />} />
           <Route path="/progress/running-fitness" element={<D.RunningFitnessDetail />} />
           <Route path="/progress/race-predictor" element={<D.RacePredictorDetail />} />
           <Route path="/progress/resting-hr" element={<D.RestingHrDetail />} />

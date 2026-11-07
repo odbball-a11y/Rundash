@@ -3,14 +3,14 @@
 // "est." = our model of undocumented behaviour, "source" = value taken from Garmin/intervals.icu.
 import { round, dayKey, addDays, daysBetween, weekStart, median } from "./util.mjs";
 import { ewma, intensityTrendPct, statusFromTrend, STATUS_TEXT, BF_DAYS, LI_DAYS } from "./status.mjs";
-import { recoveryAt } from "./recovery.mjs";
+import { recoveryAt, recoveryHours, pctFromRemaining, recoveryState, recoveryAdvice } from "./recovery.mjs";
 import { lthrZones, paceZones } from "./zones.mjs";
 import { efficiencyScore, efficiencyLevel } from "./efficiency.mjs";
 import { runningFitness, racePredictor, trainingEffect, vo2FromRun, vdotFromEfforts } from "./fitness.mjs";
 import { loadLevel } from "./load.mjs";
 import { trainingEffectFromEpoc, activityClass, baseRemaining, hoursForTe, sleepModifier, rhrModifier, feelModifier, readiness } from "./epoc.mjs";
 
-export const ALGORITHM_VERSION = "1.3.3";
+export const ALGORITHM_VERSION = "1.4.0";
 
 export const METHODS = {
   trainingLoad: "est. (TRIMP, calibrated to COROS examples 99/199/295)",
@@ -20,7 +20,7 @@ export const METHODS = {
   trainingStatus: "exact bands; Resuming vs Performance split est.",
   weeklyLoad: "exact (Mon-Sun sum)",
   recommendedWeekly: "est.",
-  recovery: "est. (recovery hours proportional to Training Load / Base Fitness, max 96 h; % calibrated to COROS's 64% at 33 h example); exact bands",
+  recovery: "COROS method (est.): recovery hours proportional to Training Load / Base Fitness, max 96 h, same inputs COROS describes (no sleep/HRV); % calibrated to COROS's 64% at 33 h example; exact COROS bands",
   hrZones: "exact COROS default % of LTHR",
   paceZones: "exact COROS default % of threshold pace",
   thresholds: "source (intervals.icu athlete settings); threshold pace est. from your pace-HR relationship when not set",
@@ -29,7 +29,7 @@ export const METHODS = {
   racePredictor: "est. (independent per distance; anchored to your best 3k-half efforts in the last 6 weeks, else 90 days)",
   efficiency: "est. model; exact eligibility and bands",
   trainingEffect: "aerobic: peak EPOC vs activity class (Firstbeat TE white paper method; EPOC est. from HR, intensity anchored on lactate threshold HR); anaerobic: est.; exact scale and labels",
-  recoveryTime: "est. (Kemp Fit model: hours from each session's aerobic Training Effect, cumulative, max 96 h, adjusted by sleep, resting HR and your rating vs your own baseline). Not a medical measurement.",
+  recoveryTime: "Kemp Fit method (est.): hours from each session's aerobic Training Effect (Firstbeat-style EPOC), cumulative, max 96 h, adjusted by sleep, resting HR and your rating vs your own baseline; % on the same scale as the COROS method. Not a medical measurement.",
   trainingFocus: "est.",
   personalRecords: "exact (fastest continuous segment incl. pauses)",
 };
@@ -126,6 +126,12 @@ export function computeAll({ activities, actMetrics = {}, wellness = [], setting
   const events = acts.filter((a) => perAct[a.id].load).map((a) => ({
     t: Date.parse(a.date) + (a.duration || 0) * 1000, load: perAct[a.id].load, bf: bfOn[String(a.date).slice(0, 10)] || 30 }));
   const recovery = recoveryAt(events, now);
+  recovery.method = "coros";
+  recovery.history = Array.from({ length: 14 }, (_, i) => {
+    const d = addDays(today, i - 13); const [y, mo, dd] = d.split("-").map(Number);
+    const r = recoveryAt(events, new Date(y, mo - 1, dd, 7).getTime());
+    return { date: d, pct: r.pct, hours: r.hoursToFull };
+  });
 
   // Weekly load (Mon-Sun) and recommendation (est.: BF*7 band, lower after 3 rising weeks)
   const weekly = {};
@@ -181,6 +187,7 @@ export function computeAll({ activities, actMetrics = {}, wellness = [], setting
     return {
       id: a.id, date: a.date, load: m.load, loadSource: m.source || null, loadLevel: loadLevel(m.load, runLoads90),
       peakEpoc: m.peakEpoc ?? null, activityClass: ac, recoveryHours: te ? Math.round(hoursForTe(te.aerobic)) : null, feel: feels[a.id] ?? null,
+      corosRecoveryHours: m.load ? Math.round(recoveryHours(m.load, bfOn[String(a.date).slice(0, 10)] || 30)) : null,
       trainingEffect: te,
       focus: m.focus || null, efficiency: eff, efficiencyLevel: efficiencyLevel(eff),
       hrZoneSeconds: m.hrZoneSeconds || null, paceZoneSeconds: m.paceZoneSeconds || null, bestEfforts: m.bestEfforts || null,
@@ -221,11 +228,15 @@ export function computeAll({ activities, actMetrics = {}, wellness = [], setting
   const hours = Math.max(0, Math.min(96, base + applied.reduce((s2, x) => s2 + x.hours, 0)));
   const history = Array.from({ length: 14 }, (_, i) => {
     const d = addDays(today, i - 13); const [y, mo, dd] = d.split("-").map(Number);
-    return { date: d, hours: Math.round(baseRemaining(sessions, new Date(y, mo - 1, dd, 7).getTime())) };
+    const h = Math.round(baseRemaining(sessions, new Date(y, mo - 1, dd, 7).getTime()));
+    return { date: d, hours: h, pct: pctFromRemaining(h) };
   });
+  const kPct = pctFromRemaining(hours);
   const recoveryTime = {
+    method: "kempfit",
     hours: Math.round(hours), baseHours: Math.round(base), modifiers: applied, ignoredModifiers: mods.filter((x) => !applied.includes(x)),
-    ...readiness(Math.round(hours)), activityClass: classAt(new Date(now).toISOString()),
+    pct: kPct, hoursToFull: Math.round(hours), state: recoveryState(kPct), advice: recoveryAdvice(kPct),
+    readiness: readiness(Math.round(hours)), activityClass: classAt(new Date(now).toISOString()),
     lastSession: lastSession ? { id: lastSession.id, te: lastSession.te, hours: Math.round(hoursForTe(lastSession.te)), peakEpoc: amById[lastSession.id]?.peakEpoc ?? null } : null,
     signals: recent ? { date: recent.id, sleepMin: recent.sleepSecs ? Math.round(recent.sleepSecs / 60) : null, sleepScore: recent.sleepScore ?? null, restingHR: recent.restingHR ?? null } : null,
     history,

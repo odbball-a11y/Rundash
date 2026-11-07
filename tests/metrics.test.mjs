@@ -136,7 +136,10 @@ test("computeAll end-to-end on synthetic history", () => {
   }
   const out = computeAll({ activities: acts, actMetrics, wellness: [{ id: "2026-10-30", vo2max: 47, restingHR: 50 }],
     settings: { rest: 50, max: 190, lthr: 168, tpSecPerKm: 270 }, today: "2026-10-31", now: Date.parse("2026-10-31T12:00:00") });
-  assert.equal(out.algorithmVersion, "1.3.3");
+  assert.equal(out.algorithmVersion, "1.4.0");
+  assert.equal(out.current.recovery.history.length, 14);
+  assert.ok(out.current.recoveryTime.pct >= 0 && out.current.recoveryTime.pct <= 100 && out.current.recoveryTime.state);
+  assert.ok(out.activities[0].corosRecoveryHours > 0);
   assert.ok(out.current.recoveryTime && Array.isArray(out.current.recoveryTime.history));
   assert.ok(out.activities[0].peakEpoc > 0);
   assert.ok(out.current.baseFitness > 0);
