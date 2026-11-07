@@ -10,7 +10,7 @@ import { runningFitness, racePredictor, trainingEffect, vo2FromRun, vdotFromEffo
 import { loadLevel } from "./load.mjs";
 import { trainingEffectFromEpoc, activityClass, baseRemaining, hoursForTe, sleepModifier, rhrModifier, feelModifier, readiness } from "./epoc.mjs";
 
-export const ALGORITHM_VERSION = "1.3.2";
+export const ALGORITHM_VERSION = "1.3.3";
 
 export const METHODS = {
   trainingLoad: "est. (TRIMP, calibrated to COROS examples 99/199/295)",

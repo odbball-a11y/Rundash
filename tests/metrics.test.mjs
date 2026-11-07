@@ -136,7 +136,7 @@ test("computeAll end-to-end on synthetic history", () => {
   }
   const out = computeAll({ activities: acts, actMetrics, wellness: [{ id: "2026-10-30", vo2max: 47, restingHR: 50 }],
     settings: { rest: 50, max: 190, lthr: 168, tpSecPerKm: 270 }, today: "2026-10-31", now: Date.parse("2026-10-31T12:00:00") });
-  assert.equal(out.algorithmVersion, "1.3.2");
+  assert.equal(out.algorithmVersion, "1.3.3");
   assert.ok(out.current.recoveryTime && Array.isArray(out.current.recoveryTime.history));
   assert.ok(out.activities[0].peakEpoc > 0);
   assert.ok(out.current.baseFitness > 0);
@@ -238,6 +238,9 @@ test("EPOC model reproduces Firstbeat Fig. 5 curves and Table 4 typical values",
   const t20 = Array.from({ length: 1216 }, (_, i) => i);
   const easy = epocFromStream(t20, t20.map((i) => 135 + Math.min(25, i / 50)), { rest: 44, max: 180, lthr: 163, vo2max: 43 });
   assert.ok(easy > 30 && easy < 120, `20-min run EPOC ${easy}`);
+  // Noise must not inflate EPOC: same mean HR with +-12 bpm jitter stays close to the smooth trace
+  const noisy = epocFromStream(t20, t20.map((i) => 135 + Math.min(25, i / 50) + (i % 2 ? 12 : -12)), { rest: 44, max: 180, lthr: 163, vo2max: 43 });
+  assert.ok(Math.abs(noisy - easy) / easy < 0.08, `noisy ${noisy} vs smooth ${easy}`);
 });
 
 test("Training Effect from peak EPOC and activity class (Firstbeat Fig. 2)", () => {

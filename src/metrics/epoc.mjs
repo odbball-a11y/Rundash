@@ -41,7 +41,22 @@ export function pctVo2maxLt(hr, rest, lthr) {
 }
 
 // Per-second EPOC trace -> peak (ml/kg). time in s, hr in bpm. Gaps > 30 s are treated as rest.
-export function epocFromStream(time, hr, { rest, max, vo2max, lthr }) {
+// HR is smoothed with a 30 s trailing mean first: EPOC rises steeply with intensity, so
+// beat-to-beat noise and short spikes would otherwise inflate it (Firstbeat applies on/off
+// kinetics to intensity before the EPOC step).
+export const SMOOTH_S = 30;
+export function smoothHr(time, hr, win = SMOOTH_S) {
+  const out = new Array(hr.length); let j = 0, sum = 0, n = 0;
+  for (let i = 0; i < hr.length; i++) {
+    if (hr[i] > 0) { sum += hr[i]; n++; }
+    while (time[i] - time[j] > win) { if (hr[j] > 0) { sum -= hr[j]; n--; } j++; }
+    out[i] = n ? sum / n : 0;
+  }
+  return out;
+}
+
+export function epocFromStream(time, hrRaw, { rest, max, vo2max, lthr }) {
+  const hr = smoothHr(time, hrRaw);
   let e = 0, peak = 0;
   for (let i = 1; i < time.length; i++) {
     const dt = (time[i] - time[i - 1]) / 60;
