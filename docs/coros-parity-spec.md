@@ -41,6 +41,13 @@ are labelled **est.**
 - **Score mapping is not a plain pace → score table.** Published examples disagree with that: athlete B has faster bands than athlete A but lower Endurance/Tempo scores, and the Training Hub example scores 96 with ~6:30/mi paces. COROS likely grades by age/sex or another model. **Ours:** convert each criterion to a VDOT-style equivalent and map onto 40–100, labelled est.
 - Running Fitness drives the **Race Predictor** and the **6 pace zones**.
 
+| Intensity Trend (3rd check) | COROS "Recovery Metrics Explained": Load Impact 53 / Base Fitness 42 → 126% | ✅ |
+| Recovery % vs hours | Same article, Training Hub card: **64%**, "33 hr(s) till full recovery", label "Tired" (older wording for Fatigued); colour bar red 0–19, yellow 20–69, green 70–89, cyan 90–100 | Used to calibrate % = 100 − 100·(R/96) (66% at 33 h) |
+| Recovery inputs | Base Fitness, Training Load, remaining energy since last workout; updates hourly; not sleep/HRV | Help Centre + article |
+| Recovery shape (text) | Rises fast when near 0%, slows near 100% | Conflicts slightly with the linear fit to the 64%/33 h point; screenshot preferred until more pairs exist |
+
+**Still needed for recovery:** pairs of (activity Training Load, Base Fitness, recovery hours straight after) from real COROS users to calibrate hours per unit of load (currently 10 h per TL/BF).
+
 **Scale note:** an "Optimized" athlete in the 4.0 promo shows Base Fitness 123, Load Impact 140.
 Our current CTL (intervals load) for the user is ~13.5, so per-workout load needs calibrating to
 COROS-like ranges. Real COROS values from a known week would let us calibrate exactly.

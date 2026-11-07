@@ -9,7 +9,7 @@ import { efficiencyScore, efficiencyLevel } from "./efficiency.mjs";
 import { runningFitness, racePredictor, trainingEffect, vo2FromRun, vdotFromEfforts } from "./fitness.mjs";
 import { loadLevel } from "./load.mjs";
 
-export const ALGORITHM_VERSION = "1.2.1";
+export const ALGORITHM_VERSION = "1.2.2";
 
 export const METHODS = {
   trainingLoad: "est. (TRIMP, calibrated to COROS examples 99/199/295)",
@@ -19,7 +19,7 @@ export const METHODS = {
   trainingStatus: "exact bands; Resuming vs Performance split est.",
   weeklyLoad: "exact (Mon-Sun sum)",
   recommendedWeekly: "est.",
-  recovery: "est. (recovery hours proportional to Training Load / Base Fitness, max 96 h); exact bands",
+  recovery: "est. (recovery hours proportional to Training Load / Base Fitness, max 96 h; % calibrated to COROS's 64% at 33 h example); exact bands",
   hrZones: "exact COROS default % of LTHR",
   paceZones: "exact COROS default % of threshold pace",
   thresholds: "source (intervals.icu athlete settings); threshold pace est. from your pace-HR relationship when not set",

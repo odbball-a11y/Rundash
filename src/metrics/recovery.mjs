@@ -5,16 +5,19 @@
 //
 // Model (v1.2.1): each activity adds recovery hours proportional to its load relative to
 // fitness, h = HOURS_PER_RATIO * TL / BF (capped at 96 h in total). Remaining hours R count
-// down in real time. Recovery % = 100 - 100 * (R / 96)^P with P > 1, so the percentage climbs
-// fastest when you are tired and slows as you approach 100%.
-//   e.g. BF 37: 20-min run TL 62  -> ~17 h, ~86% straight after
-//               55-min hard TL 200 -> ~54 h, ~48%
-//               long run TL 300    -> ~81 h, ~18%
+// down in real time. Recovery % = 100 - 100 * (R / 96)^P.
+// Calibration: COROS's own Training Hub screenshot shows 64% with "33 hr(s) till full recovery"
+// (Your COROS Recovery Metrics Explained). P = 1 gives 66% at 33 h (P = 0.96 would fit exactly,
+// P = 1.15 gave 71%). COROS's text says the % rises fastest when low, which would need P > 1;
+// the screenshot is the stronger evidence, so P = 1 (linear) is used.
+//   e.g. BF 37: 20-min run TL 62  -> ~17 h, ~82% straight after
+//               55-min hard TL 200 -> ~54 h, ~43%
+//               long run TL 300    -> ~81 h, ~16%
 import { clamp } from "./util.mjs";
 
 export const HOURS_PER_RATIO = 10;
 export const MAX_TIMER_H = 96;
-export const P = 1.15;
+export const P = 1.0;
 
 export const recoveryHours = (load, bf) => clamp((HOURS_PER_RATIO * (load || 0)) / Math.max(bf || 0, 15), 0, MAX_TIMER_H);
 export const pctFromRemaining = (R) => Math.round(100 - 100 * Math.pow(clamp(R, 0, MAX_TIMER_H) / MAX_TIMER_H, P));

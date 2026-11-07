@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { lthrZones, paceZones, zoneOfHr, zoneOfPace } from "../src/metrics/zones.mjs";
 import { loadFromStream } from "../src/metrics/load.mjs";
 import { intensityTrendPct, statusFromTrend, ewma } from "../src/metrics/status.mjs";
-import { recoveryAt, recoveryState } from "../src/metrics/recovery.mjs";
+import { recoveryAt, recoveryState, pctFromRemaining } from "../src/metrics/recovery.mjs";
 import { efficiencyLevel } from "../src/metrics/efficiency.mjs";
 import { raceTime, effortAccuracy, teLabel, trainingFocus, vdotFromEfforts, racePredictor, runningFitness } from "../src/metrics/fitness.mjs";
 import { bestTimeForDistance, bestSpeedForDuration, analyzeActivity } from "../src/metrics/activity.mjs";
@@ -43,9 +43,10 @@ test("Training Load calibration hits COROS worked examples", () => {
   near(run(143, 165), 295, 15, "165 min zone 2");
 });
 
-test("Intensity Trend matches both COROS screenshots", () => {
+test("Intensity Trend matches all three COROS screenshots", () => {
   assert.equal(intensityTrendPct(140, 123), 113);
   assert.equal(intensityTrendPct(26, 72), 36);
+  assert.equal(intensityTrendPct(53, 42), 126);
 });
 
 test("Training Status bands (EvoLab article)", () => {
@@ -93,6 +94,8 @@ test("Recovery: short easy run recovers within a day, hard runs take days, cappe
   assert.equal(huge.hoursToFull, 96); assert.equal(huge.state, "Exhausted");
   assert.equal(recoveryState(10), "Exhausted");
   assert.equal(recoveryState(95), "Fresh");
+  // COROS screenshot: 64% with 33 h till full recovery
+  near(pctFromRemaining(33), 64, 3, "COROS 64% at 33 h");
 });
 
 test("Race time from VDOT matches Daniels tables (VDOT 50: 5k ~19:57, marathon ~3:10:49)", () => {
@@ -133,7 +136,7 @@ test("computeAll end-to-end on synthetic history", () => {
   }
   const out = computeAll({ activities: acts, actMetrics, wellness: [{ id: "2026-10-30", vo2max: 47, restingHR: 50 }],
     settings: { rest: 50, max: 190, lthr: 168, tpSecPerKm: 270 }, today: "2026-10-31", now: Date.parse("2026-10-31T12:00:00") });
-  assert.equal(out.algorithmVersion, "1.2.1");
+  assert.equal(out.algorithmVersion, "1.2.2");
   assert.ok(out.current.baseFitness > 0);
   assert.ok(out.current.status);
   assert.equal(out.current.vo2Source, "Garmin");
