@@ -57,6 +57,10 @@ export function slimActivity(a) {
     distance: Math.round(km * 1000) / 1000,
     duration: moving,
     pace: km > 0 ? Math.round(moving / km) : null,
+    speed: a.average_speed || (km > 0 && moving ? (km * 1000) / moving : null), // m/s
+    gapSpeed: a.gap > 1 && a.gap < 8 ? a.gap : null,                             // grade-adjusted, m/s
+    cadence: a.average_cadence ? Math.round(a.average_cadence * (a.average_cadence < 120 ? 2 : 1)) : null,
+    calories: a.calories ?? null,
     heartRateAvg: a.average_heartrate ? Math.round(a.average_heartrate) : null,
     heartRateMax: a.max_heartrate ? Math.round(a.max_heartrate) : null,
     elevation: a.total_elevation_gain ?? null,

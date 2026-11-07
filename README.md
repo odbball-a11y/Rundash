@@ -93,6 +93,12 @@ Endpoints:
 - `/api/activity?id=…`: one activity with second-by-second streams and laps/intervals
   (GPS is left out unless `&key=ADMIN_KEY` is given; set `ADMIN_KEY` in Netlify to use it)
 - `/api/inventory`: which fields intervals.icu sends for this athlete (names and counts only)
+- `/api/metrics`: COROS-style metrics (Training Load, Base Fitness, Load Impact, Intensity Trend,
+  Training Status, Recovery, zones, Running Fitness, race predictor, efficiency, Training Effect,
+  focus, PRs) with method labels; `?fresh=1` recompute, `?snapshots=1` daily history
+
+Metric engine: `src/metrics/` (tests: `npm test`). See `docs/coros-research.md` §4 for which
+metrics are exact COROS definitions and which are estimates.
 
 Streams and laps are fetched in the background, up to 8 activities per 5-minute run, newest first.
 The old Runalyze/GitHub Actions files in `data/` are only used as a fallback.

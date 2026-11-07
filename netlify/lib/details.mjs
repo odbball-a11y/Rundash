@@ -34,7 +34,7 @@ export async function fetchDetail(id) {
 
 // Fill in details for activities that don't have them yet, newest first,
 // within a time budget (scheduled functions have ~30 s).
-export async function syncDetails({ budgetMs = 18000, max = 8 } = {}) {
+export async function syncDetails({ budgetMs = 12000, max = 8 } = {}) {
   const s = store();
   const started = Date.now();
   const activities = (await s.get("activities", { type: "json" })) || [];
