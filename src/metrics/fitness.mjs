@@ -25,19 +25,22 @@ export const abilityScore = (vdot) => (vdot ? round(clamp(40 + ((vdot - 25) * 60
 
 // Inputs (COROS criteria): base = slowest Aerobic Power pace (m/s), endurance = threshold
 // pace (m/s), speed = VO2max, sprint = best 30-60 s speed (m/s).
-export function runningFitness({ tpMps, vo2max, sprintMps }) {
+// perfVdot: VDOT from actual recent best efforts. COROS's own VO2max comes from your runs'
+// pace/HR, so it tracks real performance; a watch VO2max can sit well above it (e.g. Garmin 43
+// vs a 28:00 parkrun = VDOT 33.5). Speed therefore uses performance when available.
+export function runningFitness({ tpMps, vo2max, sprintMps, perfVdot }) {
   const baseMps = tpMps ? tpMps / 1.14 : null;            // slowest edge of Aerobic Power zone
   const v = {
     base: vdotFor(baseMps, 180),
     endurance: vdotFor(tpMps, 60),
-    speed: vo2max || null,
+    speed: perfVdot || vo2max || null,
     sprint: vdotFor(sprintMps, 1.5),
   };
   const s = Object.fromEntries(Object.entries(v).map(([k, x]) => [k, abilityScore(x)]));
   const w = { base: 0.3, endurance: 0.35, speed: 0.25, sprint: 0.1 };
   let sum = 0, wsum = 0;
   for (const k in w) if (s[k] != null) { sum += s[k] * w[k]; wsum += w[k]; }
-  return { score: wsum ? round(sum / wsum, 1) : null, abilities: s, vdot: v };
+  return { score: wsum ? round(sum / wsum, 1) : null, abilities: s, vdot: v, speedSource: perfVdot ? "best efforts" : vo2max ? "VO2max" : null };
 }
 
 // Independent per-distance predictions (COROS: "operate independently").
@@ -90,3 +93,16 @@ export function trainingFocus(loadByPaceZone) {
 // Effort Accuracy (exact for COROS's documented case): mean of quality and quantity.
 export const effortAccuracy = (quality, quantity) =>
   quality == null || quantity == null ? null : Math.round((clamp(quality, 0, 100) + clamp(quantity, 0, 100)) / 2);
+
+// Best VDOT from best-effort times: { "3k": sec, "5k": sec, ... } -> VDOT (or null).
+export function vdotFromEfforts(efforts) {
+  const m = { "3k": 3000, "5k": 5000, "10k": 10000, half: 21097.5, marathon: 42195 };
+  let best = null;
+  for (const [k, d] of Object.entries(m)) {
+    const t = efforts && efforts[k];
+    if (!t) continue;
+    const v = vdotFor(d / t, t / 60);
+    if (v && (!best || v > best)) best = v;
+  }
+  return best;
+}
