@@ -169,3 +169,40 @@ test("Race predictor anchors to real efforts, not an optimistic watch VO2max", (
   const p = racePredictor({ vdot: rf.vdot, longestRunKm6w: 6 });
   near(p["5k"].seconds, 28 * 60, 60, "5k prediction near the actual parkrun");
 });
+
+import { toIntervalsText, estimateWorkout, projectSeries, validateWorkout } from "../src/metrics/workouts.mjs";
+
+test("Workout -> intervals.icu text uses absolute pace and %LTHR", () => {
+  const zones = { pace: paceZones(341.5), hr: lthrZones(163) };
+  const w = { name: "Threshold", steps: [
+    { kind: "warmup", dur: { type: "time", value: 600 }, target: { type: "paceZone", zone: 2 } },
+    { kind: "repeat", times: 5, steps: [
+      { kind: "training", dur: { type: "distance", value: 1000 }, target: { type: "paceZone", zone: 4 } },
+      { kind: "rest", dur: { type: "time", value: 90 }, target: { type: "none" } },
+    ] },
+    { kind: "cooldown", dur: { type: "time", value: 600 }, target: { type: "hrZone", zone: 1 } },
+  ] };
+  const txt = toIntervalsText(w, zones, { lthr: 163 });
+  assert.equal(txt, [
+    "- Warm Up 10m 6:30/km-7:44/km Pace",
+    "",
+    "Main Set 5x",
+    "- Training 1km 5:36/km-6:02/km Pace",
+    "- Rest 1m30s",
+    "",
+    "- Cool Down 10m 71-79% LTHR",
+  ].join("\n"));
+  const e = estimateWorkout(w, zones, { rest: 44, max: 180, lthr: 163 });
+  assert.equal(e.blocks.length, 12);
+  assert.ok(e.seconds > 1800 && e.seconds < 3600, `seconds ${e.seconds}`);
+  assert.ok(e.load > 40, `load ${e.load}`);
+  assert.deepEqual(validateWorkout(w), []);
+  assert.ok(validateWorkout({ name: "", steps: [] }).length === 2);
+});
+
+test("Projection decays without load and rises with it", () => {
+  const rest = projectSeries(40, 40, Array(14).fill(0));
+  assert.ok(rest[13].baseFitness < 40 && rest[13].loadImpact < rest[13].baseFitness);
+  const build = projectSeries(40, 40, Array(14).fill(80));
+  assert.ok(build[13].baseFitness > 40 && build[13].intensityTrend > 100);
+});

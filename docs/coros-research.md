@@ -214,7 +214,13 @@ Every value carries `algorithmVersion` and inputs so it can be traced and recalc
 4. **Training Status / load analytics** (A6, E1, E3, E7, H3, H5) and **Recovery** (A7).
 5. **Activities** list + full analysis (A13, A14, L1, L2), PRs (A15).
 6. **Calendar** + workout builder + libraries + phases/labels + predictions (A4, C1–C7, A17, A18);
-   push structured workouts to Garmin through intervals.icu.
+   push structured workouts to Garmin through intervals.icu. ✅ (part 1): workout builder (warm-up,
+   training, rest, cool-down, intervals; time/distance/open; pace/HR zone or custom targets; modular strip;
+   estimated time/distance/load; intervals.icu text), workout library + templates, month calendar with
+   planned workouts, A/B/C races, notes, weekly phases, planned-vs-done load, 6-week Base Fitness / Load
+   Impact forecast; planned workouts and events are written to the intervals.icu calendar (syncs to
+   Garmin); writes need `ADMIN_KEY`. Still to do: training-plan library, drag-and-drop, Effort Accuracy
+   on completed planned workouts.
 7. **Running Fitness, race predictor, efficiency, VO₂max, threshold** (A8, A9, H4, E4, E6, E10).
 8. **Settings** (A20, H11, H12), import/export.
 9. Explore (A16), marathon plan generator (A19), team module (T1).

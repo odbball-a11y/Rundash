@@ -1,5 +1,7 @@
 import { Link } from "react-router-dom";
+import { useState } from "react";
 import { useAll, useApi } from "../api.js";
+import { getKey, setKey } from "../edit.js";
 import { PageHeader, Card, Icon, Loading, ErrorState, Soon, Est } from "../components/UI.jsx";
 import { ZonesCard, PersonalRecordsCard } from "../components/Cards.jsx";
 import { fmtDur, fmtPace, fmtDate, fmtNum } from "../format.js";
@@ -10,7 +12,9 @@ const MENU = [
   ["/profile/records", "trophy", "Personal Records", "Fastest times and longest run"],
   ["/profile/workouts", "list", "Workout Library", "Structured workouts"],
   ["/profile/plans", "plan", "Training Plan Library", "Plans and schedules"],
+  ["/calendar", "calendar", "Training Calendar", "Planned workouts, races, phases, forecast"],
   ["/profile/data", "refresh", "Data & sync", "Garmin → intervals.icu → Kemp Fit"],
+  ["/profile/editing", "edit", "Editing access", "Unlock adding workouts and events"],
 ];
 
 export default function Profile() {
@@ -81,9 +85,6 @@ export function RecordsPage() {
   );
 }
 
-export function WorkoutsPage() {
-  return <><PageHeader title="Workout Library" back="/profile" /><Soon phase="Phase 6 — workout builder (warm-up, training, rest, cool-down, intervals) and sending workouts to your Garmin via intervals.icu" /></>;
-}
 export function PlansPage() {
   return <><PageHeader title="Training Plan Library" back="/profile" /><Soon phase="Phase 6 — create plans, start date, drag and drop, phases" /></>;
 }
@@ -116,6 +117,25 @@ export function DataPage() {
         </Card>
       </div>}
       {toast}
+    </>
+  );
+}
+
+export function EditingPage() {
+  const [has, setHas] = useState(!!getKey());
+  const [val, setVal] = useState("");
+  return (
+    <>
+      <PageHeader title="Editing access" back="/profile" />
+      <Card title={has ? "Editing is unlocked on this device" : "Unlock editing"}>
+        <p className="muted">The site is public, so adding workouts, races and phases needs your private editing key: the <b>ADMIN_KEY</b> environment variable in Netlify. The key is stored only in this browser.</p>
+        {has ? <button className="iconbtn" onClick={() => { setKey(""); setHas(false); }}>Lock editing on this device</button> : (
+          <div className="row" style={{ gap: 8 }}>
+            <input type="password" value={val} onChange={(e) => setVal(e.target.value)} placeholder="Editing key" aria-label="Editing key" />
+            <button className="iconbtn" onClick={() => { if (val.trim()) { setKey(val.trim()); setHas(true); setVal(""); } }}>Save</button>
+          </div>
+        )}
+      </Card>
     </>
   );
 }

@@ -4,6 +4,7 @@ import { useAll } from "../api.js";
 import { PageHeader, Card, Loading, ErrorState, Seg, Info, Icon } from "../components/UI.jsx";
 import { LineChart, BarChart } from "../components/Charts.jsx";
 import * as C from "../components/Cards.jsx";
+import PlanCard from "../components/PlanCard.jsx";
 import { fmtDate, fmtDur, fmtKm, fmtPace, fmtNum, ZONE_COLORS } from "../format.js";
 import { useFilteredActivities, Stats } from "./Activities.jsx";
 import { useRefresh } from "./Progress.jsx";
@@ -28,6 +29,7 @@ export function HubDashboard() {
           <C.RacePredictorCard m={m} />
           <C.PersonalRecordsCard m={m} />
           <C.RecentActivityCard data={data} m={m} title="Recent Workout" />
+          <PlanCard title="Future Plans" />
           <C.TrainingLoadCard m={m} />
           <C.RestingHrCard data={data} />
         </div>
@@ -141,64 +143,6 @@ export function HubActivities() {
           </table>
         </div>
       </>}
-    </>
-  );
-}
-
-export function Calendar() {
-  const { data, m, loading, error } = useData();
-  const [offset, setOffset] = useState(0);
-  const loads = Object.fromEntries((m?.activities || []).map((a) => [a.id, a]));
-  const { weeks, title } = useMemo(() => {
-    const first = new Date(); first.setDate(1); first.setMonth(first.getMonth() + offset); first.setHours(0, 0, 0, 0);
-    const start = new Date(first); start.setDate(start.getDate() - ((start.getDay() + 6) % 7));
-    const weeks = [];
-    for (let w = 0; w < 6; w++) {
-      const days = [];
-      for (let d = 0; d < 7; d++) { const x = new Date(start); x.setDate(start.getDate() + w * 7 + d); days.push(x); }
-      if (w > 3 && days[0].getMonth() !== first.getMonth()) break;
-      weeks.push(days);
-    }
-    return { weeks, title: first.toLocaleDateString("en-GB", { month: "long", year: "numeric" }), month: first.getMonth() };
-  }, [offset]);
-  const key = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-  const byDay = {};
-  for (const a of data?.activities || []) (byDay[String(a.date).slice(0, 10)] ||= []).push(a);
-  const today = key(new Date());
-  return (
-    <>
-      <PageHeader title="Calendar" sub={title} right={<>
-        <button className="iconbtn" onClick={() => setOffset(offset - 1)} aria-label="Previous month"><Icon name="back" size={16} /></button>
-        <button className="iconbtn" onClick={() => setOffset(0)}>Today</button>
-        <button className="iconbtn" onClick={() => setOffset(offset + 1)} aria-label="Next month"><Icon name="chevron" size={16} /></button>
-      </>} />
-      {loading && !data ? <Loading /> : error && !data ? <ErrorState error={error} /> : <div className="card scrollx" style={{ padding: 8 }}>
-        <table className="tbl" style={{ tableLayout: "fixed", minWidth: 760 }}>
-          <thead><tr>{["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d) => <th key={d}>{d}</th>)}<th>Week</th></tr></thead>
-          <tbody>{weeks.map((days, i) => {
-            const items = days.flatMap((d) => byDay[key(d)] || []);
-            const wl = items.reduce((x, a) => x + (loads[a.id]?.load || 0), 0);
-            const wkm = items.reduce((x, a) => x + (a.distance || 0), 0);
-            return (
-              <tr key={i}>
-                {days.map((d) => (
-                  <td key={key(d)} style={{ verticalAlign: "top", height: 86, opacity: d.getMonth() === new Date(new Date().getFullYear(), new Date().getMonth() + offset, 1).getMonth() ? 1 : 0.4 }}>
-                    <div className="lbl" style={{ color: key(d) === today ? "var(--cyan)" : undefined, fontWeight: key(d) === today ? 700 : 400 }}>{d.getDate()}</div>
-                    {(byDay[key(d)] || []).map((a) => (
-                      <Link key={a.id} to={`/activities/${a.id}`} style={{ display: "block", marginTop: 4, padding: "4px 6px", borderRadius: 6, background: "var(--card-2)", fontSize: 12 }}>
-                        <div style={{ fontWeight: 600 }} className="num">{fmtKm(a.distance, 1)} km</div>
-                        <div className="lbl num">{fmtDur(a.duration)} · TL {loads[a.id]?.load ?? "—"}</div>
-                      </Link>
-                    ))}
-                  </td>
-                ))}
-                <td style={{ verticalAlign: "top" }} className="lbl num">{fmtKm(wkm, 1)} km<br />TL {wl}</td>
-              </tr>
-            );
-          })}</tbody>
-        </table>
-        <p className="lbl" style={{ padding: "0 8px" }}>Planned workouts, events, labels, training phases and fitness predictions come in Phase 6.</p>
-      </div>}
     </>
   );
 }

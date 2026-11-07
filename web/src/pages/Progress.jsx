@@ -2,10 +2,12 @@ import { useState } from "react";
 import { useAll, refreshAll } from "../api.js";
 import { PageHeader, Loading, ErrorState, Icon } from "../components/UI.jsx";
 import * as C from "../components/Cards.jsx";
+import PlanCard from "../components/PlanCard.jsx";
 import { todayLong } from "../format.js";
 
 export const PROGRESS_CARDS = [
   ["recent", "Latest Activity", (p) => <C.RecentActivityCard {...p} />],
+  ["plan", "Training Calendar", () => <PlanCard />],
   ["status", "Training Status", (p) => <C.TrainingStatusCard {...p} />],
   ["load", "Training Load", (p) => <C.TrainingLoadCard {...p} />],
   ["recovery", "Recovery", (p) => <C.RecoveryCard {...p} />],

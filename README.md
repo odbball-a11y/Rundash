@@ -93,6 +93,10 @@ Endpoints:
 - `/api/activity?id=…`: one activity with second-by-second streams and laps/intervals
   (GPS is left out unless `&key=ADMIN_KEY` is given; set `ADMIN_KEY` in Netlify to use it)
 - `/api/inventory`: which fields intervals.icu sends for this athlete (names and counts only)
+- `/api/workouts`: workout library (GET; POST/DELETE need `x-kf-key: ADMIN_KEY`)
+- `/api/calendar?from=&to=`: planned workouts, races and notes from intervals.icu plus weekly phases;
+  POST `{action: "workout"|"event"|"phase"}` and DELETE `?eventId=` need the key. Planned workouts are
+  written to intervals.icu, which uploads them to Garmin when "Upload planned workouts" is enabled.
 - `/api/metrics`: COROS-style metrics (Training Load, Base Fitness, Load Impact, Intensity Trend,
   Training Status, Recovery, zones, Running Fitness, race predictor, efficiency, Training Effect,
   focus, PRs) with method labels; `?fresh=1` recompute, `?snapshots=1` daily history

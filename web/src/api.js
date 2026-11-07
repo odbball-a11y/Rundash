@@ -18,6 +18,15 @@ export function fetchCached(url, { force = false } = {}) {
   return p;
 }
 
+// Drop cached responses whose URL starts with `prefix`; mounted screens using them refetch.
+export function invalidate(prefix) {
+  for (const url of [...cache.keys()]) {
+    if (!url.startsWith(prefix)) continue;
+    cache.delete(url);
+    if ((listeners.get(url) || []).length) fetchCached(url).catch(() => {});
+  }
+}
+
 export function useApi(url) {
   const [state, setState] = useState({ data: null, error: null, loading: !!url });
   useEffect(() => {

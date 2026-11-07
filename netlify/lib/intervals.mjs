@@ -39,6 +39,21 @@ export async function apiGet(path, params) {
   return resp.json();
 }
 
+export const athleteId = () => credentials().athlete;
+
+// POST / PUT / DELETE to intervals.icu (planned workouts and events).
+export async function apiSend(method, path, body) {
+  const { key } = credentials();
+  const resp = await fetch(`${API}${path}`, {
+    method,
+    headers: { authorization: "Basic " + btoa(`API_KEY:${key}`), accept: "application/json", "content-type": "application/json" },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (!resp.ok) throw new Error(`intervals.icu ${method} ${path} -> ${resp.status} ${(await resp.text()).slice(0, 200)}`);
+  const t = await resp.text();
+  return t ? JSON.parse(t) : {};
+}
+
 // GET a path under the configured athlete.
 async function get(path, params) {
   const { athlete } = credentials();
