@@ -71,6 +71,42 @@ export function RecoveryDetail() {
   return <Wrap title="Recovery">{({ m, data }) => <RecoveryBody m={m} data={data} />}</Wrap>;
 }
 
+function FitCard({ fit, acts }) {
+  if (!fit) return null;
+  const cal = fit.calibration || {};
+  const better = fit.corrWithRhr.coros == null || fit.corrWithRhr.kempfit == null ? null
+    : Math.abs(fit.corrWithRhr.coros - fit.corrWithRhr.kempfit) < 0.03 ? "about the same" : fit.corrWithRhr.coros > fit.corrWithRhr.kempfit ? "COROS method" : "Kemp Fit method";
+  const pm = (v) => (v == null ? "—" : `${v > 0 ? "+" : ""}${v} bpm`);
+  return (
+    <Card title="How well does each method fit you?" className="span2" info={<Info title="How well does each method fit you?">
+      <p>Checks each method against your body's response: how far your resting heart rate rose above your 14-day normal the morning after each run. A method that fits well predicts more remaining recovery on the mornings your resting heart rate is raised.</p>
+      <p>The Kemp Fit hours are scaled to fit this, blended with a starting value (×{cal.prior}) according to how much evidence there is. It updates automatically as new runs come in.</p>
+      <p>Resting heart rate is a noisy signal (sleep, stress, illness and alcohol move it too), so treat this as an indication, not proof. HRV would be better, but your watch doesn't record it.</p>
+    </Info>}>
+      <div className="scrollx"><table className="tbl num">
+        <thead><tr><th></th><th>COROS method</th><th>Kemp Fit method</th></tr></thead>
+        <tbody>
+          <tr><td>Typical recovery per run</td><td>{fit.medianHours.coros} h</td><td>{fit.medianHours.kempfit} h</td></tr>
+          <tr><td>Fit with next-morning resting HR <span className="lbl">(correlation)</span></td><td>{fit.corrWithRhr.coros ?? "—"}</td><td>{fit.corrWithRhr.kempfit ?? "—"}</td></tr>
+          <tr><td>Resting HR after runs it rated lightest</td><td>{pm(fit.rhrAfter.coros?.lightest)}</td><td>{pm(fit.rhrAfter.kempfit?.lightest)}</td></tr>
+          <tr><td>Resting HR after runs it rated heaviest</td><td>{pm(fit.rhrAfter.coros?.heaviest)}</td><td>{pm(fit.rhrAfter.kempfit?.heaviest)}</td></tr>
+          <tr><td>Range across your 12 heaviest sessions</td><td>{fit.heavySpread.coros ? `${fit.heavySpread.coros.min}–${fit.heavySpread.coros.max} h` : "—"}</td><td>{fit.heavySpread.kempfit ? `${fit.heavySpread.kempfit.min}–${fit.heavySpread.kempfit.max} h` : "—"}</td></tr>
+        </tbody>
+      </table></div>
+      <p className="lbl" style={{ marginTop: 8 }}>Based on {fit.n} runs with a resting heart rate the next morning. Best fit so far: <b style={{ color: "var(--text)" }}>{better || "not enough data"}</b>. Kemp Fit scale ×{cal.scale}{cal.fitted != null ? ` (your data suggests ×${cal.fitted}, weight ${Math.round((cal.weight || 0) * 100)}%)` : ""}.</p>
+      <div className="month">Your heaviest sessions</div>
+      <div className="scrollx"><table className="tbl num">
+        <thead><tr><th>Date</th><th>Run</th><th>km</th><th>min</th><th>Load</th><th>COROS</th><th>Kemp Fit</th><th>RHR next morning</th></tr></thead>
+        <tbody>{fit.heaviest.map((h) => <tr key={h.id}>
+          <td>{fmtDate(h.date, { day: "2-digit", month: "short", year: "2-digit" })}</td>
+          <td><Link to={`/activities/${h.id}`} style={{ color: "var(--cyan)" }}>{acts[h.id]?.title || "Run"}</Link></td>
+          <td>{fmtNum(h.km, 1)}</td><td>{h.minutes}</td><td>{h.load}</td><td>{h.coros} h</td><td>{h.kempfit} h</td><td>{pm(h.rhrRise == null ? null : Math.round(h.rhrRise))}</td>
+        </tr>)}</tbody>
+      </table></div>
+    </Card>
+  );
+}
+
 function RecoveryBody({ m, data }) {
   const [method, setMethod] = C.useRecoveryMethod();
   const co = m.current?.recovery, kf = m.current?.recoveryTime;
@@ -113,9 +149,10 @@ function RecoveryBody({ m, data }) {
         </tr>)}</tbody>
       </table></div>
     </Card>
+    <FitCard fit={m.current?.recoveryFit} acts={acts} />
     <Card title="How each method works" className="span2">
       <p className="muted"><b>COROS method.</b> Uses the inputs COROS describes: your Training Load, Base Fitness and the time since your last run. Each run adds recovery time in proportion to its load compared with your fitness; it counts down to 0, capped at 96 h. The % is calibrated to COROS's own example (64% with 33 h left). COROS doesn't use sleep or HRV for this.</p>
-      <p className="muted"><b>Kemp Fit method.</b> Each run's heart rate is converted to effort relative to your threshold and accumulated into EPOC (exercise "after-burn"), following Firstbeat's published model. Peak EPOC compared with how much you usually train (activity class {kf?.activityClass ?? "—"}) gives the aerobic Training Effect, which sets the hours (TE 1 ≈ 2 h, 2 ≈ 6 h, 3 ≈ 14 h, 4 ≈ 28 h, 5 ≈ 54 h). Shorter sleep or a resting heart rate above your 30-day normal add time; good sleep, a low resting heart rate and feeling good take time off. Same % scale and levels as the COROS method.</p>
+      <p className="muted"><b>Kemp Fit method.</b> Each run's heart rate is converted to effort relative to your threshold and accumulated into EPOC (exercise "after-burn"), following Firstbeat's published model. Peak EPOC compared with how much you usually train (activity class {kf?.activityClass ?? "—"}) gives the aerobic Training Effect, which sets the hours (before scaling: TE 1 ≈ 2 h, 2 ≈ 6 h, 3 ≈ 14 h, 4 ≈ 28 h, 5 ≈ 54 h, and still rising beyond TE 5). Those hours are then scaled (×{kf?.calibration?.scale ?? "—"}) to fit how your own resting heart rate has responded the morning after your runs. Shorter sleep or a resting heart rate above your 30-day normal add time; good sleep, a low resting heart rate and feeling good take time off. Same % scale and levels as the COROS method.</p>
       <p className="lbl">Both are estimates. Neither COROS, Garmin nor Firstbeat publish their recovery formulas, and neither method can tell whether muscles, tendons or your nervous system have fully recovered.</p>
     </Card>
   </div>;

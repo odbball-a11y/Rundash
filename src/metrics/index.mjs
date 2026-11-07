@@ -8,9 +8,9 @@ import { lthrZones, paceZones } from "./zones.mjs";
 import { efficiencyScore, efficiencyLevel } from "./efficiency.mjs";
 import { runningFitness, racePredictor, trainingEffect, vo2FromRun, vdotFromEfforts } from "./fitness.mjs";
 import { loadLevel } from "./load.mjs";
-import { trainingEffectFromEpoc, activityClass, baseRemaining, hoursForTe, sleepModifier, rhrModifier, feelModifier, readiness } from "./epoc.mjs";
+import { trainingEffectFromEpoc, activityClass, baseRemaining, hoursForTe, sleepModifier, rhrModifier, feelModifier, readiness, teExtended, hoursForTeExtended, calibrateScale, pearson } from "./epoc.mjs";
 
-export const ALGORITHM_VERSION = "1.4.0";
+export const ALGORITHM_VERSION = "1.5.0";
 
 export const METHODS = {
   trainingLoad: "est. (TRIMP, calibrated to COROS examples 99/199/295)",
@@ -29,7 +29,7 @@ export const METHODS = {
   racePredictor: "est. (independent per distance; anchored to your best 3k-half efforts in the last 6 weeks, else 90 days)",
   efficiency: "est. model; exact eligibility and bands",
   trainingEffect: "aerobic: peak EPOC vs activity class (Firstbeat TE white paper method; EPOC est. from HR, intensity anchored on lactate threshold HR); anaerobic: est.; exact scale and labels",
-  recoveryTime: "Kemp Fit method (est.): hours from each session's aerobic Training Effect (Firstbeat-style EPOC), cumulative, max 96 h, adjusted by sleep, resting HR and your rating vs your own baseline; % on the same scale as the COROS method. Not a medical measurement.",
+  recoveryTime: "Kemp Fit method (est.): hours from each session's EPOC-based Training Effect (Firstbeat-style, not capped at TE 5), scaled to your own next-morning resting-HR responses, cumulative, max 96 h, adjusted by sleep, resting HR and your rating vs your own baseline; % on the same scale as the COROS method. Not a medical measurement.",
   trainingFocus: "est.",
   personalRecords: "exact (fastest continuous segment incl. pauses)",
 };
@@ -175,6 +175,24 @@ export function computeAll({ activities, actMetrics = {}, wellness = [], setting
     const sec = acts.filter((x) => { const u = Date.parse(x.date); return u < t && u >= from; }).reduce((s2, x) => s2 + (x.duration || 0), 0);
     return activityClass(sec / 3600 / 4);
   };
+  // ---- Personal calibration of Kemp Fit hours (Version 2) ----
+  const rhrBy = Object.fromEntries((wellness || []).filter((w) => w.restingHR > 0).map((w) => [String(w.id), w.restingHR]));
+  const rawKemp = {};
+  for (const a of acts) {
+    const m = perAct[a.id];
+    if (m.peakEpoc == null) continue;
+    rawKemp[a.id] = hoursForTeExtended(teExtended(m.peakEpoc, classAt(a.date)));
+  }
+  const nextMorning = (a) => {
+    const d = String(a.date).slice(0, 10), nd = addDays(d, 1);
+    const end = Date.parse(a.date) + (a.duration || 0) * 1000;
+    const [y, mo, dd] = nd.split("-").map(Number);
+    const base = median(Array.from({ length: 14 }, (_, k) => rhrBy[addDays(d, -k)]).filter(Boolean));
+    return { hoursToMorning: (new Date(y, mo - 1, dd, 7).getTime() - end) / 3600000, rhrRise: rhrBy[nd] && base ? rhrBy[nd] - base : null };
+  };
+  const samples = acts.filter((a) => rawKemp[a.id] != null).map((a) => ({ id: a.id, rawHours: rawKemp[a.id], ...nextMorning(a) }));
+  const calibration = calibrateScale(samples);
+
   const activityMetrics = acts.map((a) => {
     const m = perAct[a.id];
     const eff = efficiencyScore(a, runs, settings.max);
@@ -186,7 +204,8 @@ export function computeAll({ activities, actMetrics = {}, wellness = [], setting
     }
     return {
       id: a.id, date: a.date, load: m.load, loadSource: m.source || null, loadLevel: loadLevel(m.load, runLoads90),
-      peakEpoc: m.peakEpoc ?? null, activityClass: ac, recoveryHours: te ? Math.round(hoursForTe(te.aerobic)) : null, feel: feels[a.id] ?? null,
+      peakEpoc: m.peakEpoc ?? null, activityClass: ac, feel: feels[a.id] ?? null,
+      recoveryHours: rawKemp[a.id] != null ? Math.round(Math.min(96, rawKemp[a.id] * calibration.scale)) : te ? Math.round(hoursForTe(te.aerobic) * calibration.scale) : null,
       corosRecoveryHours: m.load ? Math.round(recoveryHours(m.load, bfOn[String(a.date).slice(0, 10)] || 30)) : null,
       trainingEffect: te,
       focus: m.focus || null, efficiency: eff, efficiencyLevel: efficiencyLevel(eff),
@@ -206,8 +225,8 @@ export function computeAll({ activities, actMetrics = {}, wellness = [], setting
 
   // ---- Recovery Time (est., personalised) ----
   const amById = Object.fromEntries(activityMetrics.map((x) => [x.id, x]));
-  const sessions = acts.filter((a) => amById[a.id]?.trainingEffect?.aerobic != null)
-    .map((a) => ({ t: Date.parse(a.date) + (a.duration || 0) * 1000, te: amById[a.id].trainingEffect.aerobic, id: a.id }));
+  const sessions = acts.filter((a) => amById[a.id]?.recoveryHours != null)
+    .map((a) => ({ t: Date.parse(a.date) + (a.duration || 0) * 1000, te: amById[a.id].trainingEffect?.aerobic ?? null, hours: amById[a.id].recoveryHours, id: a.id }));
   const base = baseRemaining(sessions, now);
   const wl = [...wellness].sort((a, b) => String(b.id).localeCompare(String(a.id)));
   // Latest day (today or yesterday) that actually has sleep or resting-HR data - today's row often
@@ -237,9 +256,35 @@ export function computeAll({ activities, actMetrics = {}, wellness = [], setting
     hours: Math.round(hours), baseHours: Math.round(base), modifiers: applied, ignoredModifiers: mods.filter((x) => !applied.includes(x)),
     pct: kPct, hoursToFull: Math.round(hours), state: recoveryState(kPct), advice: recoveryAdvice(kPct),
     readiness: readiness(Math.round(hours)), activityClass: classAt(new Date(now).toISOString()),
-    lastSession: lastSession ? { id: lastSession.id, te: lastSession.te, hours: Math.round(hoursForTe(lastSession.te)), peakEpoc: amById[lastSession.id]?.peakEpoc ?? null } : null,
+    lastSession: lastSession ? { id: lastSession.id, te: lastSession.te, hours: lastSession.hours, peakEpoc: amById[lastSession.id]?.peakEpoc ?? null } : null,
+    calibration,
     signals: recent ? { date: recent.id, sleepMin: recent.sleepSecs ? Math.round(recent.sleepSecs / 60) : null, sleepScore: recent.sleepScore ?? null, restingHR: recent.restingHR ?? null } : null,
     history,
+  };
+
+  // ---- How well each method fits this athlete (next-morning resting HR) ----
+  const fitRows = samples.filter((x) => x.rhrRise != null).map((x) => ({ ...x, co: amById[x.id]?.corosRecoveryHours, kf: amById[x.id]?.recoveryHours }))
+    .filter((x) => x.co != null && x.kf != null);
+  const resid = (h, x) => Math.max(0, h - x.hoursToMorning);
+  const thirds = (key) => {
+    const srt = [...fitRows].sort((a, b) => a[key] - b[key]); const n = Math.floor(srt.length / 3);
+    if (n < 3) return null;
+    const mean = (arr) => round(arr.reduce((p, q) => p + q.rhrRise, 0) / arr.length, 2);
+    return { lightest: mean(srt.slice(0, n)), heaviest: mean(srt.slice(-n)) };
+  };
+  const heavy = [...acts].filter((a) => amById[a.id]?.load).sort((a, b) => amById[b.id].load - amById[a.id].load).slice(0, 12);
+  const spread = (key) => { const v = heavy.map((a) => amById[a.id][key]).filter((x) => x != null); return v.length ? { min: Math.min(...v), max: Math.max(...v) } : null; };
+  const recoveryFit = fitRows.length < 10 ? null : {
+    n: fitRows.length,
+    medianHours: { coros: median(fitRows.map((x) => x.co)), kempfit: median(fitRows.map((x) => x.kf)) },
+    corrWithRhr: {
+      coros: round(pearson(fitRows.map((x) => resid(x.co, x)), fitRows.map((x) => x.rhrRise)), 2),
+      kempfit: round(pearson(fitRows.map((x) => resid(x.kf, x)), fitRows.map((x) => x.rhrRise)), 2),
+    },
+    rhrAfter: { coros: thirds("co"), kempfit: thirds("kf") },
+    heavySpread: { coros: spread("corosRecoveryHours"), kempfit: spread("recoveryHours") },
+    heaviest: heavy.slice(0, 8).map((a) => ({ id: a.id, date: a.date, km: a.distance, minutes: Math.round((a.duration || 0) / 60), load: amById[a.id].load, coros: amById[a.id].corosRecoveryHours, kempfit: amById[a.id].recoveryHours, rhrRise: (samples.find((x) => x.id === a.id) || {}).rhrRise ?? null })),
+    calibration,
   };
 
   return {
@@ -250,7 +295,7 @@ export function computeAll({ activities, actMetrics = {}, wellness = [], setting
     zones: { hr: lthrZones(settings.lthr), pace: paceZones(settings.tpSecPerKm) },
     current: {
       date: cur.date, baseFitness: cur.baseFitness, loadImpact: cur.loadImpact, intensityTrend: cur.intensityTrend,
-      status: cur.status, statusText: STATUS_TEXT[cur.status] || null, recovery, recoveryTime,
+      status: cur.status, statusText: STATUS_TEXT[cur.status] || null, recovery, recoveryTime, recoveryFit,
       weekLoad: weeks.length ? weeks[weeks.length - 1].load : 0, recommendedWeekLoad: recommended,
       vo2max: vo2max ? round(vo2max, 1) : null, vo2Source: garminVo2 ? "Garmin" : fallbackVo2 ? "est." : null,
       runningFitness: { score: rf.score, abilities: rf.abilities, speedSource: rf.speedSource },

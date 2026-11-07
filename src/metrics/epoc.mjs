@@ -117,7 +117,7 @@ export function baseRemaining(sessions, now, cap = 96) {
   for (const s of [...sessions].sort((a, b) => a.t - b.t)) {
     if (s.t > now) break;
     if (last != null) R = Math.max(0, R - (s.t - last) / 3600000);
-    R = Math.min(cap, R + hoursForTe(s.te));
+    R = Math.min(cap, R + (s.hours ?? hoursForTe(s.te)));
     last = s.t;
   }
   if (last != null) R = Math.max(0, R - (now - last) / 3600000);
@@ -160,4 +160,50 @@ export function readiness(hours) {
   if (hours <= 24) return { state: "Recovering", advice: "Easy or moderate training is fine" };
   if (hours <= 48) return { state: "Fatigued", advice: "Keep it easy today" };
   return { state: "Very fatigued", advice: "Rest or very easy recovery only" };
+}
+
+// ---------------- v1.5: uncapped hours + personal calibration ----------------
+// Training Effect is displayed capped at 5.0 (Firstbeat's scale), but for recovery hours we keep
+// scaling with EPOC beyond TE 5, so a 69-min 10 km counts for more than a 34-min 5 km.
+export function teExtended(peak, c) {
+  if (peak == null) return null;
+  const t = teThresholds(c);
+  if (peak < t[4]) return trainingEffectFromEpoc(peak, c);
+  return round(5 + (peak - t[4]) / (t[4] - t[3]), 2);
+}
+export function hoursForTeExtended(te) {
+  if (te == null) return 0;
+  return te <= 5 ? hoursForTe(te) : 54 + (te - 5) * 26; // continue the TE 4->5 slope
+}
+
+// Prior scale from the athlete's history (Nov 2026 analysis: Kemp Fit hours were ~1.5x the
+// COROS method's while next-morning resting HR did not support the extra time; 26/40 ~ 0.65).
+export const PRIOR_SCALE = 0.65;
+export const SCALE_GRID = Array.from({ length: 27 }, (_, i) => round(0.3 + i * 0.05, 2)); // 0.30..1.60
+
+const pearson = (x, y) => {
+  const n = x.length; if (n < 3) return null;
+  const mx = x.reduce((a, b) => a + b, 0) / n, my = y.reduce((a, b) => a + b, 0) / n;
+  let sxy = 0, sx = 0, sy = 0;
+  for (let i = 0; i < n; i++) { sxy += (x[i] - mx) * (y[i] - my); sx += (x[i] - mx) ** 2; sy += (y[i] - my) ** 2; }
+  return sx > 0 && sy > 0 ? sxy / Math.sqrt(sx * sy) : null;
+};
+export { pearson };
+
+// Personal calibration (Version 2, est.): choose the scale k for which the recovery still left at
+// 7am the next morning, max(0, k*h - hoursUntilMorning), best tracks the athlete's next-morning
+// resting-HR rise above their 14-day baseline. The fitted k is blended with the prior according to
+// how much evidence there is (number of runs and strength of the relationship).
+// samples: [{ rawHours, hoursToMorning, rhrRise }]
+export function calibrateScale(samples, prior = PRIOR_SCALE) {
+  const s = samples.filter((x) => x.rhrRise != null && x.rawHours > 0);
+  if (s.length < 20) return { scale: prior, fitted: null, corr: null, n: s.length, weight: 0, prior };
+  let best = null;
+  for (const k of SCALE_GRID) {
+    const r = pearson(s.map((x) => Math.max(0, k * x.rawHours - x.hoursToMorning)), s.map((x) => x.rhrRise));
+    if (r != null && (!best || r > best.r)) best = { k, r };
+  }
+  if (!best || best.r <= 0.05) return { scale: prior, fitted: best?.k ?? null, corr: best ? round(best.r, 2) : null, n: s.length, weight: 0, prior };
+  const weight = round(Math.min(0.7, (s.length / 150) * Math.min(1, best.r / 0.3)), 2);
+  return { scale: round(prior * (1 - weight) + best.k * weight, 2), fitted: best.k, corr: round(best.r, 2), n: s.length, weight, prior };
 }

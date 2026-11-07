@@ -136,7 +136,7 @@ test("computeAll end-to-end on synthetic history", () => {
   }
   const out = computeAll({ activities: acts, actMetrics, wellness: [{ id: "2026-10-30", vo2max: 47, restingHR: 50 }],
     settings: { rest: 50, max: 190, lthr: 168, tpSecPerKm: 270 }, today: "2026-10-31", now: Date.parse("2026-10-31T12:00:00") });
-  assert.equal(out.algorithmVersion, "1.4.0");
+  assert.equal(out.algorithmVersion, "1.5.0");
   assert.equal(out.current.recovery.history.length, 14);
   assert.ok(out.current.recoveryTime.pct >= 0 && out.current.recoveryTime.pct <= 100 && out.current.recoveryTime.state);
   assert.ok(out.activities[0].corosRecoveryHours > 0);
@@ -219,7 +219,7 @@ test("Projection decays without load and rises with it", () => {
   assert.ok(build[13].baseFitness > 40 && build[13].intensityTrend > 100);
 });
 
-import { epocConstant, epocFromStream, trainingEffectFromEpoc, activityClass, baseRemaining, hoursForTe, sleepModifier, rhrModifier, feelModifier, pctVo2max } from "../src/metrics/epoc.mjs";
+import { epocConstant, epocFromStream, trainingEffectFromEpoc, activityClass, baseRemaining, hoursForTe, sleepModifier, rhrModifier, feelModifier, pctVo2max, teExtended, hoursForTeExtended, calibrateScale, PRIOR_SCALE } from "../src/metrics/epoc.mjs";
 
 test("EPOC model reproduces Firstbeat Fig. 5 curves and Table 4 typical values", () => {
   near(epocConstant(0.7, 30), 85, 10, "70% 30 min");
@@ -268,4 +268,24 @@ test("Recovery time accumulates, counts down, caps at 96 h; modifiers move it", 
   assert.equal(rhrModifier(48, 47), null);
   assert.equal(feelModifier(1).hours, 12);
   assert.equal(feelModifier(5).hours, -6);
+});
+
+test("Kemp Fit v1.5: hours keep rising beyond TE 5, and calibration follows the athlete's RHR", () => {
+  const c = 6;
+  assert.equal(teExtended(100, c), trainingEffectFromEpoc(100, c));
+  assert.ok(teExtended(300, c) > teExtended(200, c) && teExtended(200, c) > 5, "uncapped above TE 5");
+  assert.ok(hoursForTeExtended(5.5) > hoursForTeExtended(5), "hours keep scaling");
+  // Too few samples -> prior
+  assert.equal(calibrateScale([{ rawHours: 40, hoursToMorning: 14, rhrRise: 1 }]).scale, PRIOR_SCALE);
+  // Synthetic athlete whose next-morning RHR follows residual fatigue with true k = 0.5
+  const samples = Array.from({ length: 150 }, (_, i) => {
+    const raw = 10 + (i * 37) % 60, toMorning = 12 + (i * 7) % 8;
+    return { rawHours: raw, hoursToMorning: toMorning, rhrRise: 0.12 * Math.max(0, 0.5 * raw - toMorning) + ((i * 13) % 5 - 2) * 0.3 };
+  });
+  const cal = calibrateScale(samples);
+  assert.ok(cal.fitted >= 0.4 && cal.fitted <= 0.6, `fitted ${cal.fitted}`);
+  assert.ok(cal.weight > 0 && cal.scale < PRIOR_SCALE && cal.scale > cal.fitted, `blended ${cal.scale}`);
+  // No relationship -> stays at prior
+  const noise = samples.map((x, i) => ({ ...x, rhrRise: ((i * 17) % 7) - 3 }));
+  assert.equal(calibrateScale(noise).weight, 0);
 });
