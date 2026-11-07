@@ -6,10 +6,10 @@ import { ewma, intensityTrendPct, statusFromTrend, STATUS_TEXT, BF_DAYS, LI_DAYS
 import { recoveryAt } from "./recovery.mjs";
 import { lthrZones, paceZones } from "./zones.mjs";
 import { efficiencyScore, efficiencyLevel } from "./efficiency.mjs";
-import { runningFitness, racePredictor, trainingEffect, vo2FromRun } from "./fitness.mjs";
+import { runningFitness, racePredictor, trainingEffect, vo2FromRun, vdotFromEfforts } from "./fitness.mjs";
 import { loadLevel } from "./load.mjs";
 
-export const ALGORITHM_VERSION = "1.1.0";
+export const ALGORITHM_VERSION = "1.2.0";
 
 export const METHODS = {
   trainingLoad: "est. (TRIMP, calibrated to COROS examples 99/199/295)",
@@ -25,7 +25,7 @@ export const METHODS = {
   thresholds: "source (intervals.icu athlete settings); threshold pace est. from your pace-HR relationship when not set",
   vo2max: "source (Garmin, via intervals.icu wellness); est. fallback",
   runningFitness: "est. (VDOT-equivalent per COROS criterion, 40-100)",
-  racePredictor: "est. (independent per distance)",
+  racePredictor: "est. (independent per distance; anchored to your best 3k-half efforts in the last 6 weeks, else 90 days)",
   efficiency: "est. model; exact eligibility and bands",
   trainingEffect: "est. model; exact scale and labels",
   trainingFocus: "est.",
@@ -146,7 +146,14 @@ export function computeAll({ activities, actMetrics = {}, wellness = [], setting
   const sprintMps = Math.max(0, ...recentRuns.map((a) => perAct[a.id].best60sMps || 0)) || null;
   const longestRunKm6w = recentRuns.length ? Math.max(...recentRuns.map((a) => a.distance || 0)) : null;
   const tpMps = settings.tpSecPerKm ? 1000 / settings.tpSecPerKm : null;
-  const rf = runningFitness({ tpMps, vo2max, sprintMps });
+  // Performance anchor: best VDOT from 3k-half best efforts, last 6 weeks, else last 90 days.
+  const perfIn = (days) => {
+    const c = Date.parse(addDays(today, -days));
+    const vs = runs.filter((a) => Date.parse(a.date) >= c).map((a) => vdotFromEfforts(perAct[a.id].bestEfforts)).filter(Boolean);
+    return vs.length ? Math.max(...vs) : null;
+  };
+  const perfVdot = perfIn(42) || perfIn(90);
+  const rf = runningFitness({ tpMps, vo2max, sprintMps, perfVdot });
   const predictor = racePredictor({ vdot: rf.vdot, longestRunKm6w });
 
   // Per-activity derived metrics
@@ -183,7 +190,8 @@ export function computeAll({ activities, actMetrics = {}, wellness = [], setting
       status: cur.status, statusText: STATUS_TEXT[cur.status] || null, recovery,
       weekLoad: weeks.length ? weeks[weeks.length - 1].load : 0, recommendedWeekLoad: recommended,
       vo2max: vo2max ? round(vo2max, 1) : null, vo2Source: garminVo2 ? "Garmin" : fallbackVo2 ? "est." : null,
-      runningFitness: { score: rf.score, abilities: rf.abilities }, racePredictor: predictor,
+      runningFitness: { score: rf.score, abilities: rf.abilities, speedSource: rf.speedSource },
+      performanceVdot: perfVdot ? round(perfVdot, 1) : null, racePredictor: predictor,
     },
     series,
     weeks,

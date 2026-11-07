@@ -6,7 +6,7 @@ import { loadFromStream } from "../src/metrics/load.mjs";
 import { intensityTrendPct, statusFromTrend, ewma } from "../src/metrics/status.mjs";
 import { recoveryAt, recoveryState } from "../src/metrics/recovery.mjs";
 import { efficiencyLevel } from "../src/metrics/efficiency.mjs";
-import { raceTime, effortAccuracy, teLabel, trainingFocus } from "../src/metrics/fitness.mjs";
+import { raceTime, effortAccuracy, teLabel, trainingFocus, vdotFromEfforts, racePredictor, runningFitness } from "../src/metrics/fitness.mjs";
 import { bestTimeForDistance, bestSpeedForDuration, analyzeActivity } from "../src/metrics/activity.mjs";
 import { computeAll, resolveSettings, estimateThresholdPace } from "../src/metrics/index.mjs";
 import { hrSpeedBins } from "../src/metrics/activity.mjs";
@@ -129,7 +129,7 @@ test("computeAll end-to-end on synthetic history", () => {
   }
   const out = computeAll({ activities: acts, actMetrics, wellness: [{ id: "2026-10-30", vo2max: 47, restingHR: 50 }],
     settings: { rest: 50, max: 190, lthr: 168, tpSecPerKm: 270 }, today: "2026-10-31", now: Date.parse("2026-10-31T12:00:00") });
-  assert.equal(out.algorithmVersion, "1.1.0");
+  assert.equal(out.algorithmVersion, "1.2.0");
   assert.ok(out.current.baseFitness > 0);
   assert.ok(out.current.status);
   assert.equal(out.current.vo2Source, "Garmin");
@@ -159,4 +159,13 @@ test("Threshold pace from pace-HR relationship", () => {
   assert.ok(fb.tpSecPerKm > 240 && fb.tpSecPerKm < 340, `fallback ${fb.tpSecPerKm}`);
   const st = resolveSettings([], [], {}, { tp });
   assert.equal(st.tpSecPerKm, tp.tpSecPerKm);
+});
+
+test("Race predictor anchors to real efforts, not an optimistic watch VO2max", () => {
+  const perf = vdotFromEfforts({ "5k": 28 * 60 });   // 28:00 parkrun
+  near(perf, 33.5, 0.3, "VDOT of 28:00 5k");
+  const rf = runningFitness({ tpMps: 1000 / 350, vo2max: 43, sprintMps: 4.5, perfVdot: perf });
+  assert.equal(rf.speedSource, "best efforts");
+  const p = racePredictor({ vdot: rf.vdot, longestRunKm6w: 6 });
+  near(p["5k"].seconds, 28 * 60, 60, "5k prediction near the actual parkrun");
 });
