@@ -6,11 +6,11 @@ import { ewma, intensityTrendPct, statusFromTrend, STATUS_TEXT, BF_DAYS, LI_DAYS
 import { recoveryAt, recoveryHours, pctFromRemaining, recoveryState, recoveryAdvice } from "./recovery.mjs";
 import { lthrZones, paceZones } from "./zones.mjs";
 import { efficiencyScore, efficiencyLevel } from "./efficiency.mjs";
-import { runningFitness, racePredictor, trainingEffect, vo2FromRun, vdotFromEfforts } from "./fitness.mjs";
+import { runningFitness, racePredictor, trainingEffect, vo2FromRun, vdotFromEfforts, rfFromMarathonMinutes } from "./fitness.mjs";
 import { loadLevel } from "./load.mjs";
 import { trainingEffectFromEpoc, activityClass, baseRemaining, hoursForTe, sleepModifier, rhrModifier, feelModifier, readiness, teExtended, hoursForTeExtended, calibrateScale, pearson } from "./epoc.mjs";
 
-export const ALGORITHM_VERSION = "1.5.2";
+export const ALGORITHM_VERSION = "1.6.0";
 
 export const METHODS = {
   trainingLoad: "est. (TRIMP, calibrated to COROS examples 99/199/295)",
@@ -25,7 +25,7 @@ export const METHODS = {
   paceZones: "exact COROS default % of threshold pace",
   thresholds: "source (intervals.icu athlete settings); threshold pace est. from your pace-HR relationship when not set",
   vo2max: "source (Garmin, via intervals.icu wellness); est. fallback",
-  runningFitness: "est. (VDOT-equivalent per COROS criterion, 40-100)",
+  runningFitness: "COROS scale: overall from the predicted marathon, abilities from each criterion's equivalent marathon, via COROS's Running Fitness / marathon table (male and female); criteria per COROS (Base = slowest Aerobic Power pace, Endurance = threshold pace, Speed = VO2max / best efforts, Sprint = best 30-60 s); est.",
   racePredictor: "est. (independent per distance; anchored to your best 3k-half efforts in the last 6 weeks, else 90 days)",
   efficiency: "est. model; exact eligibility and bands",
   trainingEffect: "aerobic: peak EPOC vs activity class (Firstbeat TE white paper method; EPOC est. from HR, intensity anchored on lactate threshold HR); anaerobic: est.; exact scale and labels",
@@ -169,6 +169,9 @@ export function computeAll({ activities, actMetrics = {}, wellness = [], setting
   const perfVdot = perfIn(42) || perfIn(90);
   const rf = runningFitness({ tpMps, vo2max, sprintMps, perfVdot });
   const predictor = racePredictor({ vdot: rf.vdot, longestRunKm6w });
+  const mMin = predictor?.marathon?.seconds ? predictor.marathon.seconds / 60 : null;
+  const rfScore = { male: rfFromMarathonMinutes(mMin, "male"), female: rfFromMarathonMinutes(mMin, "female") };
+  rf.score = rfScore.male;
 
   // Per-activity derived metrics
   const runLoads90 = runs.filter((a) => Date.parse(a.date) >= Date.parse(addDays(today, -90))).map((a) => perAct[a.id].load);
@@ -301,7 +304,7 @@ export function computeAll({ activities, actMetrics = {}, wellness = [], setting
       status: cur.status, statusText: STATUS_TEXT[cur.status] || null, recovery, recoveryTime, recoveryFit,
       weekLoad: weeks.length ? weeks[weeks.length - 1].load : 0, recommendedWeekLoad: recommended,
       vo2max: vo2max ? round(vo2max, 1) : null, vo2Source: garminVo2 ? "Garmin" : fallbackVo2 ? "est." : null,
-      runningFitness: { score: rf.score, abilities: rf.abilities, speedSource: rf.speedSource },
+      runningFitness: { score: rf.score, abilities: rf.abilities, scoreBySex: rfScore, abilitiesBySex: rf.abilitiesBySex, speedSource: rf.speedSource },
       performanceVdot: perfVdot ? round(perfVdot, 1) : null, racePredictor: predictor,
     },
     series,

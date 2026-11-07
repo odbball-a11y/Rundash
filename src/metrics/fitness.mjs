@@ -20,8 +20,30 @@ export function raceTime(vdot, meters) {
   return Math.round((lo + hi) / 2);
 }
 
-// VDOT 25 -> 40, VDOT 80 -> 100 (COROS ability scale is 40-100).
-export const abilityScore = (vdot) => (vdot ? round(clamp(40 + ((vdot - 25) * 60) / 55, 40, 100), 1) : null);
+// COROS Running Fitness <-> marathon time (Training Hub reference table; male / female anchors).
+// Verified against two COROS screenshots: 2:33:34 predicted marathon -> 96.4 (table: 96.3) and
+// 2:47:31 -> 94.4 (table: 94.4). Interpolated linearly in time between anchors, extrapolated
+// below 60 with the last slope, clamped to 40-100.
+export const RF_TABLE = {
+  male: [[120, 100], [165, 95], [210, 85], [240, 75], [360, 60]],
+  female: [[134, 100], [185, 95], [230, 85], [260, 75], [380, 60]],
+};
+export function rfFromMarathonMinutes(mins, sex = "male") {
+  if (!mins) return null;
+  const A = RF_TABLE[sex] || RF_TABLE.male;
+  if (mins <= A[0][0]) return 100;
+  for (let i = 1; i < A.length; i++) if (mins <= A[i][0]) {
+    const [t1, s1] = A[i - 1], [t2, s2] = A[i];
+    return round(s1 + ((mins - t1) / (t2 - t1)) * (s2 - s1), 1);
+  }
+  const [t1, s1] = A[A.length - 2], [t2, s2] = A[A.length - 1];
+  return round(clamp(s2 + ((mins - t2) / (t2 - t1)) * (s2 - s1), 40, 100), 1);
+}
+
+// Ability score: the ability's VDOT-equivalent expressed as an equivalent marathon, then the
+// COROS table (matches COROS's published elite profile within ~2 points; v1.5 used a straight
+// VDOT->40-100 line that put this athlete ~20 points below the COROS scale).
+export const abilityScore = (vdot, sex = "male") => (vdot ? rfFromMarathonMinutes(raceTime(vdot, 42195) / 60, sex) : null);
 
 // Inputs (COROS criteria): base = slowest Aerobic Power pace (m/s), endurance = threshold
 // pace (m/s), speed = VO2max, sprint = best 30-60 s speed (m/s).
@@ -36,11 +58,10 @@ export function runningFitness({ tpMps, vo2max, sprintMps, perfVdot }) {
     speed: perfVdot || vo2max || null,
     sprint: vdotFor(sprintMps, 1.5),
   };
-  const s = Object.fromEntries(Object.entries(v).map(([k, x]) => [k, abilityScore(x)]));
-  const w = { base: 0.3, endurance: 0.35, speed: 0.25, sprint: 0.1 };
-  let sum = 0, wsum = 0;
-  for (const k in w) if (s[k] != null) { sum += s[k] * w[k]; wsum += w[k]; }
-  return { score: wsum ? round(sum / wsum, 1) : null, abilities: s, vdot: v, speedSource: perfVdot ? "best efforts" : vo2max ? "VO2max" : null };
+  const scoresFor = (sex) => Object.fromEntries(Object.entries(v).map(([k, x]) => [k, abilityScore(x, sex)]));
+  // Overall score is set from the predicted marathon (COROS: "Running Fitness represents your
+  // marathon performance"); computeAll fills it in after the race predictor runs.
+  return { score: null, abilities: scoresFor("male"), abilitiesBySex: { male: scoresFor("male"), female: scoresFor("female") }, vdot: v, speedSource: perfVdot ? "best efforts" : vo2max ? "VO2max" : null };
 }
 
 // Independent per-distance predictions (COROS: "operate independently").

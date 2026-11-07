@@ -48,6 +48,9 @@ are labelled **est.**
 
 **Still needed for recovery:** pairs of (activity Training Load, Base Fitness, recovery hours straight after) from real COROS users to calibrate hours per unit of load (currently 10 h per TL/BF).
 
+| Running Fitness ↔ marathon | COROS Training Hub reference table (male / female): 100 ≈ <2:00 / <2:14 · 95 ≈ 2:45 / 3:05 · 85 ≈ 3:30 / 3:50 · 75 ≈ 4:00 / 4:20 · 60 ≈ 6:00 / 6:20. Reproduces COROS screenshots 2:33:34 → 96.4 (table 96.3) and 2:47:31 → 94.4 (table 94.4) | Used for overall and ability scores (v1.6.0) |
+| Running Fitness abilities | Ability VDOT → equivalent marathon → table matches COROS's elite profile (Endurance 95.9 vs 96.1) and Athlete A (89.9 vs 91.9); Athlete B's published numbers are internally inconsistent | ✅ 2 of 3 examples |
+
 **Scale note:** an "Optimized" athlete in the 4.0 promo shows Base Fitness 123, Load Impact 140.
 Our current CTL (intervals load) for the user is ~13.5, so per-workout load needs calibrating to
 COROS-like ranges. Real COROS values from a known week would let us calibrate exactly.

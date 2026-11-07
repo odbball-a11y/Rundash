@@ -3,7 +3,7 @@ import { useState } from "react";
 import { useAll, useApi } from "../api.js";
 import { getKey, setKey } from "../edit.js";
 import { PageHeader, Card, Icon, Loading, ErrorState, Soon, Est } from "../components/UI.jsx";
-import { ZonesCard, PersonalRecordsCard } from "../components/Cards.jsx";
+import { ZonesCard, PersonalRecordsCard, useRfScale } from "../components/Cards.jsx";
 import { fmtDur, fmtPace, fmtDate, fmtNum } from "../format.js";
 import { useRefresh } from "./Progress.jsx";
 
@@ -57,6 +57,7 @@ export function SettingsPage() {
           </tbody></table>
           <p className="lbl">Editing thresholds and choosing other zone systems (max HR, heart-rate reserve) comes in the Settings phase.</p>
         </Card>
+        <RfScaleCard />
         <ZonesCard m={m} kind="hr" />
         <ZonesCard m={m} kind="pace" />
       </div>}
@@ -137,5 +138,17 @@ export function EditingPage() {
         )}
       </Card>
     </>
+  );
+}
+
+function RfScaleCard() {
+  const [scale, setScale] = useRfScale();
+  return (
+    <Card title="Running Fitness scale" className="span2">
+      <p className="muted">COROS's Running Fitness table has separate male and female marathon reference times (e.g. a score of 85 ≈ 3:30 male / 3:50 female). Choose which one to use for your score.</p>
+      <div className="seg" role="radiogroup" aria-label="Running Fitness scale">
+        {[["male", "Male"], ["female", "Female"]].map(([v, l]) => <button key={v} role="radio" aria-checked={scale === v} className={scale === v ? "on" : ""} onClick={() => setScale(v)}>{l}</button>)}
+      </div>
+    </Card>
   );
 }

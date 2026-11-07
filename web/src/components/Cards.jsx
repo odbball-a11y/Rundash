@@ -53,26 +53,41 @@ export function abilityBands(m) {
   return { base: rng(z(2)), endurance: rng(z(4)), speed: rng(z(5)), sprint: `< ${fmtPace((z(6) || {}).slowSec)}` };
 }
 
+// Which column of COROS's Running Fitness table to use (it has male and female marathon anchors).
+const RF_KEY = "kf_rf_scale";
+export function useRfScale() {
+  const read = () => { try { return localStorage.getItem(RF_KEY) || "male"; } catch { return "male"; } };
+  const [v, setV] = useState(read);
+  useEffect(() => { const on = () => setV(read()); window.addEventListener("kf-rf-scale", on); return () => window.removeEventListener("kf-rf-scale", on); }, []);
+  const set = (x) => { try { localStorage.setItem(RF_KEY, x); } catch {} setV(x); window.dispatchEvent(new Event("kf-rf-scale")); };
+  return [v, set];
+}
+
 export function RunningFitnessCard({ m, to = "/progress/running-fitness" }) {
+  const [scale] = useRfScale();
   const rf = m?.current?.runningFitness;
+  const score = rf?.scoreBySex?.[scale] ?? rf?.score;
+  const ab = rf?.abilitiesBySex?.[scale] ?? rf?.abilities;
   const bands = abilityBands(m);
   const rows = [["Base", "base", "> 30 km"], ["Endurance", "endurance", "~10 km"], ["Speed", "speed", "~3 km"], ["Sprint", "sprint", "~400 m"]];
   return (
     <Card title="Running Fitness" to={to} info={<Info title="Running Fitness" method={M(m, "runningFitness")}>
-      <p>Your running ability on a 40–100 scale, from the last 6 weeks, with four abilities: Base (long aerobic), Endurance (threshold), Speed (VO₂max) and Sprint (30–60 s). The pace beside each ability is the zone to train in to improve it.</p>
+      <p>Your running ability on COROS's 40–100 scale. The overall score reflects your predicted marathon, using COROS's reference table (for example 95 ≈ 2:45, 85 ≈ 3:30, 75 ≈ 4:00, 60 ≈ 6:00 on the male scale). Each ability is scored the same way from its own measure: Base (long aerobic), Endurance (threshold pace), Speed (VO₂max / best efforts) and Sprint (best 30–60 s), from the last 6 weeks.</p>
+      <p>The pace beside each ability is the zone to train in to improve it. Scale in use: {scale === "female" ? "female" : "male"} (change in Profile → Heart rate & pace zones).</p>
     </Info>}>
       <div className="row" style={{ alignItems: "flex-start" }}>
-        <Gauge value={rf?.score} min={40} max={100} color="var(--orange)" size={120} sub={<tspan>score</tspan>} />
+        <Gauge value={score} min={40} max={100} color="var(--orange)" size={120} sub={<tspan>score</tspan>} />
         <div style={{ flex: 1, minWidth: 0 }} className="stack">
           {rows.map(([name, k, dist]) => (
             <div key={k}>
-              <div className="row between lbl"><span><b style={{ color: "var(--text)" }}>{name}</b> {dist}</span><span className="num" style={{ color: "var(--text)" }}>{fmtNum(rf?.abilities?.[k], 1)}</span></div>
-              <Bar value={(rf?.abilities?.[k] || 40) - 40} max={60} color="var(--orange)" />
+              <div className="row between lbl"><span><b style={{ color: "var(--text)" }}>{name}</b> {dist}</span><span className="num" style={{ color: "var(--text)" }}>{fmtNum(ab?.[k], 1)}</span></div>
+              <Bar value={(ab?.[k] || 40) - 40} max={60} color="var(--orange)" />
               <div className="lbl num" style={{ fontSize: 11 }}>{bands[k] ? `${bands[k]} /km` : ""}</div>
             </div>
           ))}
         </div>
       </div>
+      <div className="lbl" style={{ marginTop: 6 }}>COROS {scale} scale{m?.current?.racePredictor?.marathon ? ` · predicted marathon ${fmtDur(m.current.racePredictor.marathon.seconds)}` : ""}</div>
     </Card>
   );
 }

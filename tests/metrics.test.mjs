@@ -6,7 +6,7 @@ import { loadFromStream } from "../src/metrics/load.mjs";
 import { intensityTrendPct, statusFromTrend, ewma } from "../src/metrics/status.mjs";
 import { recoveryAt, recoveryState, pctFromRemaining } from "../src/metrics/recovery.mjs";
 import { efficiencyLevel } from "../src/metrics/efficiency.mjs";
-import { raceTime, effortAccuracy, teLabel, trainingFocus, vdotFromEfforts, racePredictor, runningFitness } from "../src/metrics/fitness.mjs";
+import { raceTime, effortAccuracy, teLabel, trainingFocus, vdotFromEfforts, racePredictor, runningFitness, rfFromMarathonMinutes, abilityScore, vdotFor } from "../src/metrics/fitness.mjs";
 import { bestTimeForDistance, bestSpeedForDuration, analyzeActivity } from "../src/metrics/activity.mjs";
 import { computeAll, resolveSettings, estimateThresholdPace } from "../src/metrics/index.mjs";
 import { hrSpeedBins } from "../src/metrics/activity.mjs";
@@ -137,7 +137,7 @@ test("computeAll end-to-end on synthetic history", () => {
   }
   const out = computeAll({ activities: acts, actMetrics, wellness: [{ id: "2026-10-30", vo2max: 47, restingHR: 50 }],
     settings: { rest: 50, max: 190, lthr: 168, tpSecPerKm: 270 }, today: "2026-10-31", now: Date.parse("2026-10-31T12:00:00") });
-  assert.equal(out.algorithmVersion, "1.5.2");
+  assert.equal(out.algorithmVersion, "1.6.0");
   assert.equal(out.current.recovery.history.length, 14);
   assert.ok(out.current.recoveryTime.pct >= 0 && out.current.recoveryTime.pct <= 100 && out.current.recoveryTime.state);
   assert.ok(out.activities[0].corosRecoveryHours > 0);
@@ -290,4 +290,16 @@ test("Kemp Fit v1.5: hours keep rising beyond TE 5, and calibration follows the 
   // No relationship -> stays at prior
   const noise = samples.map((x, i) => ({ ...x, rhrRise: ((i * 17) % 7) - 3 }));
   assert.equal(calibrateScale(noise).weight, 0);
+});
+
+test("Running Fitness uses COROS's scale (reproduces COROS screenshots)", () => {
+  near(rfFromMarathonMinutes(153 + 34 / 60), 96.4, 0.3, "Training Hub: 2:33:34 -> 96.4");
+  near(rfFromMarathonMinutes(167 + 31 / 60), 94.4, 0.1, "Running Fitness article: 2:47:31 -> 94.4");
+  assert.equal(rfFromMarathonMinutes(240), 75);
+  assert.equal(rfFromMarathonMinutes(240, "female"), 81.7);
+  assert.ok(rfFromMarathonMinutes(900) >= 40 && rfFromMarathonMinutes(100) === 100);
+  // COROS elite profile: threshold 5:38/mi (3:30/km) -> Endurance 96.1
+  near(abilityScore(vdotFor(1000 / 210, 60)), 96.1, 1.5, "elite Endurance");
+  // COROS Athlete A: threshold ~4:10/km -> Endurance 91.9
+  near(abilityScore(vdotFor(1000 / 250, 60)), 91.9, 2.5, "Athlete A Endurance");
 });
