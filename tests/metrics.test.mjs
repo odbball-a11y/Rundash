@@ -137,7 +137,11 @@ test("computeAll end-to-end on synthetic history", () => {
   }
   const out = computeAll({ activities: acts, actMetrics, wellness: [{ id: "2026-10-30", vo2max: 47, restingHR: 50 }],
     settings: { rest: 50, max: 190, lthr: 168, tpSecPerKm: 270 }, today: "2026-10-31", now: Date.parse("2026-10-31T12:00:00") });
-  assert.equal(out.algorithmVersion, "1.6.0");
+  assert.equal(out.algorithmVersion, "1.6.1");
+  const h = out.current.runningFitness.history;
+  assert.ok(h.length >= 3 && h.every((x, i) => i === 0 || x.date > h[i - 1].date), "weekly Running Fitness history in date order");
+  assert.equal(h[h.length - 1].score.male, out.current.runningFitness.scoreBySex.male, "latest history point matches today");
+  assert.ok(h[h.length - 1].score.male != null && h[h.length - 1].predictor.marathon > 0);
   assert.equal(out.current.recovery.history.length, 14);
   assert.ok(out.current.recoveryTime.pct >= 0 && out.current.recoveryTime.pct <= 100 && out.current.recoveryTime.state);
   assert.ok(out.activities[0].corosRecoveryHours > 0);

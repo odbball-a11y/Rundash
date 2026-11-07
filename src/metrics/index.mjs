@@ -10,7 +10,7 @@ import { runningFitness, racePredictor, trainingEffect, vo2FromRun, vdotFromEffo
 import { loadLevel } from "./load.mjs";
 import { trainingEffectFromEpoc, activityClass, baseRemaining, hoursForTe, sleepModifier, rhrModifier, feelModifier, readiness, teExtended, hoursForTeExtended, calibrateScale, pearson } from "./epoc.mjs";
 
-export const ALGORITHM_VERSION = "1.6.0";
+export const ALGORITHM_VERSION = "1.6.1";
 
 export const METHODS = {
   trainingLoad: "est. (TRIMP, calibrated to COROS examples 99/199/295)",
@@ -173,6 +173,29 @@ export function computeAll({ activities, actMetrics = {}, wellness = [], setting
   const rfScore = { male: rfFromMarathonMinutes(mMin, "male"), female: rfFromMarathonMinutes(mMin, "female") };
   rf.score = rfScore.male;
 
+  // ---- Running Fitness over time: recomputed as of past dates using only data available then ----
+  const tpIsEstimate = /est\./.test(settings.sources?.tpSecPerKm || "") || !settings.tpSecPerKm;
+  const fitnessAt = (day) => {
+    const end = Date.parse(addDays(day, 1));
+    const upTo = runs.filter((a) => Date.parse(a.date) < end);
+    if (!upTo.length) return null;
+    const vRows = vo2Rows.filter((w) => String(w.id) <= day);
+    const vo2 = day === today ? vo2max : vRows.length ? vRows[vRows.length - 1].vo2max : median(upTo.slice(-10).map((a) => vo2FromRun(a.speed, a.heartRateAvg, settings.max)));
+    const c42 = Date.parse(addDays(day, -42));
+    const r6 = upTo.filter((a) => Date.parse(a.date) >= c42);
+    if (!r6.length) return null;
+    const sprint = Math.max(0, ...r6.map((a) => perAct[a.id].best60sMps || 0)) || null;
+    const longest = Math.max(...r6.map((a) => a.distance || 0));
+    const tpSec = tpIsEstimate && day !== today ? estimateThresholdPace({ activities: upTo, actMetrics: perAct, lthr: settings.lthr, vo2max: vo2, today: day })?.tpSecPerKm : settings.tpSecPerKm;
+    const pIn = (n) => { const c = Date.parse(addDays(day, -n)); const vs = upTo.filter((a) => Date.parse(a.date) >= c).map((a) => vdotFromEfforts(perAct[a.id].bestEfforts)).filter(Boolean); return vs.length ? Math.max(...vs) : null; };
+    const f = runningFitness({ tpMps: tpSec ? 1000 / tpSec : null, vo2max: vo2, sprintMps: sprint, perfVdot: pIn(42) || pIn(90) });
+    const pr = racePredictor({ vdot: f.vdot, longestRunKm6w: longest });
+    const mm = pr?.marathon?.seconds ? pr.marathon.seconds / 60 : null;
+    return { date: day, score: { male: rfFromMarathonMinutes(mm, "male"), female: rfFromMarathonMinutes(mm, "female") }, abilities: f.abilitiesBySex,
+      predictor: pr ? Object.fromEntries(Object.entries(pr).map(([k, v]) => [k, v?.seconds ?? null])) : null, thresholdPace: tpSec || null };
+  };
+  const fitnessHistory = Array.from({ length: 53 }, (_, i) => fitnessAt(addDays(today, -7 * (52 - i)))).filter(Boolean);
+
   // Per-activity derived metrics
   const runLoads90 = runs.filter((a) => Date.parse(a.date) >= Date.parse(addDays(today, -90))).map((a) => perAct[a.id].load);
   // Activity class at the time of each activity: average weekly hours over the previous 4 weeks.
@@ -304,7 +327,7 @@ export function computeAll({ activities, actMetrics = {}, wellness = [], setting
       status: cur.status, statusText: STATUS_TEXT[cur.status] || null, recovery, recoveryTime, recoveryFit,
       weekLoad: weeks.length ? weeks[weeks.length - 1].load : 0, recommendedWeekLoad: recommended,
       vo2max: vo2max ? round(vo2max, 1) : null, vo2Source: garminVo2 ? "Garmin" : fallbackVo2 ? "est." : null,
-      runningFitness: { score: rf.score, abilities: rf.abilities, scoreBySex: rfScore, abilitiesBySex: rf.abilitiesBySex, speedSource: rf.speedSource },
+      runningFitness: { score: rf.score, abilities: rf.abilities, scoreBySex: rfScore, abilitiesBySex: rf.abilitiesBySex, speedSource: rf.speedSource, history: fitnessHistory },
       performanceVdot: perfVdot ? round(perfVdot, 1) : null, racePredictor: predictor,
     },
     series,

@@ -158,11 +158,46 @@ function RecoveryBody({ m, data }) {
   </div>;
 }
 
+const WEEK_RANGES = [["84", "12W"], ["182", "6M"], ["365", "1Y"]];
+function useWeekRange() { const [r, setR] = useState("182"); return [Number(r), <Seg options={WEEK_RANGES} value={r} onChange={setR} />]; }
+const sinceDays = (rows, days) => { const cut = Date.now() - days * 864e5; return rows.filter((r) => Date.parse(r.date) >= cut); };
+const fmtRace = (s) => { if (s == null) return "—"; s = Math.round(s); const h = Math.floor(s / 3600), mm = Math.floor((s % 3600) / 60), ss = s % 60; return h ? `${h}:${String(mm).padStart(2, "0")}:${String(ss).padStart(2, "0")}` : `${mm}:${String(ss).padStart(2, "0")}`; };
+
+function RunningFitnessTrend({ m }) {
+  const [scale] = C.useRfScale();
+  const [days, seg] = useWeekRange();
+  const [show, setShow] = useState("overall");
+  const rows = sinceDays(m.current?.runningFitness?.history || [], days);
+  const labels = rows.map((r) => fmtDate(r.date));
+  const ab = (k) => rows.map((r) => r.abilities?.[scale]?.[k] ?? null);
+  const series = show === "overall"
+    ? [{ label: "Running Fitness", data: rows.map((r) => r.score?.[scale] ?? null), color: "#22d3ee", fill: true, width: 2.5 }]
+    : [
+        { label: "Base", data: ab("base"), color: "#34d399" },
+        { label: "Endurance", data: ab("endurance"), color: "#facc15" },
+        { label: "Speed", data: ab("speed"), color: "#f97316" },
+        { label: "Sprint", data: ab("sprint"), color: "#f87171" },
+      ];
+  const vals = series.flatMap((s) => s.data).filter((v) => v != null);
+  const first = rows.find((r) => r.score?.[scale] != null), last = rows[rows.length - 1];
+  const change = first && last?.score?.[scale] != null ? Math.round((last.score[scale] - first.score[scale]) * 10) / 10 : null;
+  return <Card title="Running Fitness over time" right={<span style={{ marginLeft: "auto" }}>{seg}</span>}>
+    <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+      <Seg options={[["overall", "Overall"], ["abilities", "Abilities"]]} value={show} onChange={setShow} />
+      {change != null && <span className="lbl">Change: <b style={{ color: change >= 0 ? "var(--green)" : "var(--orange)" }}>{change > 0 ? "+" : ""}{change}</b></span>}
+    </div>
+    {rows.length < 2 ? <NA>Not enough history yet</NA> : <LineChart height="lg" legend={show !== "overall"} labels={labels} series={series}
+      yMin={vals.length ? Math.max(0, Math.floor(Math.min(...vals) / 5) * 5 - 5) : undefined} yMax={vals.length ? Math.min(100, Math.ceil(Math.max(...vals) / 5) * 5 + 5) : undefined} />}
+    <p className="lbl">One point per week, each worked out from the 6 weeks of running before it (same method as today's score, {scale} scale).<Est /></p>
+  </Card>;
+}
+
 export function RunningFitnessDetail() {
   return <Wrap title="Running Fitness">{({ m, data }) => {
     const c = m.current || {};
     return <div className="grid">
       <div className="span2"><C.RunningFitnessCard m={m} to={null} /></div>
+      <div className="span2"><RunningFitnessTrend m={m} /></div>
       <Card title="How to improve each ability">
         <table className="tbl"><tbody>
           <tr><td><b>Base</b></td><td className="muted">Long continuous runs (1–2 h) in Aerobic Endurance</td></tr>
@@ -181,11 +216,30 @@ export function RacePredictorDetail() {
   return <Wrap title="Race Predictor">{({ m }) => (
     <div className="stack">
       <C.RacePredictorCard m={m} to={null} />
+      <RacePredictorTrend m={m} />
       <Card title="About these predictions">
         <p className="muted">Estimates assume a flat course in good weather. They come from your last 6 weeks of running (90 days if there isn't enough), anchored to your actual best efforts{m.current?.performanceVdot ? ` (running fitness ${fmtNum(m.current.performanceVdot, 1)})` : ""}. The marathon time includes a penalty while your longest recent run is under 25 km.<Est /></p>
       </Card>
     </div>
   )}</Wrap>;
+}
+
+function RacePredictorTrend({ m }) {
+  const [days, seg] = useWeekRange();
+  const [dist, setDist] = useState("5k");
+  const rows = sinceDays(m.current?.runningFitness?.history || [], days);
+  const data = rows.map((r) => r.predictor?.[dist] ?? null);
+  const known = data.filter((v) => v != null);
+  const change = known.length > 1 ? known[known.length - 1] - known[0] : null;
+  return <Card title="Predicted times over time" right={<span style={{ marginLeft: "auto" }}>{seg}</span>}>
+    <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+      <Seg options={[["5k", "5K"], ["10k", "10K"], ["half", "Half"], ["marathon", "Marathon"]]} value={dist} onChange={setDist} />
+      {change != null && Math.abs(change) >= 1 && <span className="lbl">{change < 0 ? "Faster" : "Slower"} by <b style={{ color: change < 0 ? "var(--green)" : "var(--orange)" }}>{fmtRace(Math.abs(change))}</b></span>}
+    </div>
+    {known.length < 2 ? <NA>Not enough history yet</NA> : <LineChart height="lg" labels={rows.map((r) => fmtDate(r.date))} reverseY yFmt={fmtRace}
+      series={[{ label: "Predicted", data, color: "#a78bfa", width: 2.5 }]} />}
+    <p className="lbl">One point per week from the 6 weeks of running before it. Faster times are higher on the chart.<Est /></p>
+  </Card>;
 }
 
 export function RestingHrDetail() {

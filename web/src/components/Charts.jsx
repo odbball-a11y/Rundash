@@ -33,7 +33,7 @@ const baseOpts = (extra = {}) => ({
 });
 
 // series: [{ label, data:[numbers|null], color, fill?, dashed?, axis? }]
-export function LineChart({ labels, series, height = "", yMin, yMax, legend = false, reverseY = false, y2 = false }) {
+export function LineChart({ labels, series, height = "", yMin, yMax, legend = false, reverseY = false, y2 = false, yFmt }) {
   const ref = useChart(() => ({
     type: "line",
     data: {
@@ -45,10 +45,13 @@ export function LineChart({ labels, series, height = "", yMin, yMax, legend = fa
       })),
     },
     options: baseOpts({
-      plugins: { legend: { display: legend, labels: { boxWidth: 10, boxHeight: 10 } } },
+      plugins: {
+        legend: { display: legend, labels: { boxWidth: 10, boxHeight: 10 } },
+        ...(yFmt ? { tooltip: { callbacks: { label: (c) => `${c.dataset.label}: ${c.parsed.y == null ? "—" : yFmt(c.parsed.y)}` } } } : {}),
+      },
       scales: {
         x: { grid: { display: false }, ticks: { maxTicksLimit: 7, maxRotation: 0 } },
-        y: { grid: { color: "#1c2640" }, ticks: { maxTicksLimit: 5 }, min: yMin, max: yMax, reverse: reverseY },
+        y: { grid: { color: "#1c2640" }, ticks: { maxTicksLimit: 5, ...(yFmt ? { callback: (v) => yFmt(v) } : {}) }, min: yMin, max: yMax, reverse: reverseY },
         ...(y2 ? { y2: { position: "right", grid: { display: false }, ticks: { maxTicksLimit: 5 } } } : {}),
       },
     }),
