@@ -75,26 +75,20 @@ Create a fine-grained token at https://github.com/settings/tokens with access to
 **Refresh Data**, the dashboard asks for it and stores it in that browser's
 localStorage. **Never put the token in `index.html`**, because this repo is public.
 
-## Live Strava runs (instant updates)
+## Live data via intervals.icu (recommended)
 
-Garmin → Strava → Strava webhook → Netlify function → dashboard (refreshes every 30 s).
-Runalyze still supplies HRV, sleep and resting HR.
+Garmin → intervals.icu → Netlify (checks every 5 min) → dashboard (refreshes every minute).
+Gives runs, HRV, sleep, resting HR and fitness/fatigue/form. No GitHub Actions needed.
 
-1. **Strava app**: https://www.strava.com/settings/api → create an app.
-   *Authorization Callback Domain* = `kempfit.netlify.app`.
-2. **Netlify → Site configuration → Environment variables**, add:
-   | Variable | Value |
-   |----------|-------|
-   | `STRAVA_CLIENT_ID` | from the Strava app page |
-   | `STRAVA_CLIENT_SECRET` | from the Strava app page |
-   | `STRAVA_VERIFY_TOKEN` | any random word |
-   | `ADMIN_KEY` | a long random password only you know |
-   Then **Deploys → Trigger deploy**. (The site must be linked to this repo.)
-3. Open `https://kempfit.netlify.app/api/strava-auth?key=ADMIN_KEY` → approve on Strava.
-4. Open `https://kempfit.netlify.app/api/strava-admin?key=ADMIN_KEY&action=subscribe` (turns on instant updates).
-5. Open `https://kempfit.netlify.app/api/strava-admin?key=ADMIN_KEY&action=backfill` and reload until it says `Done!` (imports your history).
+1. Free account at https://intervals.icu → **Settings → Connections → Garmin**.
+2. **Settings → Developer Settings**: copy your Athlete ID (e.g. `i12345`) and API key.
+3. Netlify → kempfit → **Site configuration → Environment variables**:
+   `INTERVALS_ATHLETE_ID`, `INTERVALS_API_KEY`. The site must be linked to this repo.
+4. **Deploys → Trigger deploy**, then open `https://kempfit.netlify.app/api/sync` once
+   to import your history. After that it updates on its own.
 
-Check everything with `...&action=status`. Route maps are never exposed publicly.
+Endpoints: `/api/data` (dashboard JSON), `/api/sync` (pull now, max once a minute).
+The old Runalyze/GitHub Actions files in `data/` are only used as a fallback.
 
 ## Local Development
 

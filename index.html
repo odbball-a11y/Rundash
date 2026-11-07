@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Runalyze Dashboard</title>
+  <title>Kemp Fit</title>
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Outfit:wght@300;400;600;700;800&display=swap" rel="stylesheet">
   <style>
     :root {
@@ -343,7 +343,7 @@
 
   <!-- Header -->
   <div class="header">
-    <h1>🏃 Runalyze Dashboard</h1>
+    <h1>🏃 Kemp Fit</h1>
     <div class="header-right">
       <span class="last-updated" id="lastUpdated">Loading...</span>
       <button class="refresh-btn" id="refreshBtn" onclick="triggerRefresh()">
@@ -492,6 +492,11 @@
 
       const cards = [
         { label: 'This Week', value: weekKm.toFixed(1) + ' km', sub: 'since Monday', color: 'var(--accent-green, #22c55e)' },
+        ...(window.__fitness ? [{
+          label: 'Form', value: (window.__fitness.tsb > 0 ? '+' : '') + Math.round(window.__fitness.tsb),
+          sub: `fitness ${Math.round(window.__fitness.ctl)} · fatigue ${Math.round(window.__fitness.atl)}`,
+          color: window.__fitness.tsb < -20 ? 'var(--accent-red)' : 'var(--accent-cyan)',
+        }] : []),
         { label: 'Total Activities', value: activities.length, sub: 'all time' },
         { label: 'Total Distance', value: totalDist.toFixed(0) + ' km', sub: 'all time' },
         { label: 'Total Duration', value: fmtDuration(totalDuration), sub: 'all time' },
@@ -630,120 +635,43 @@
     }
 
     // -----------------------------------------------------------------------
-    // Refresh button — calls GitHub API directly to trigger the workflow
+    // Refresh button: ask the backend to pull from intervals.icu right now.
     // -----------------------------------------------------------------------
-    // CONFIGURATION. The GitHub token is NOT stored in this file (the repo is
-    // public). The first time you press Refresh you are asked for a
-    // fine-grained token (Actions: read & write on this repo only); it is kept
-    // in this browser's localStorage and never committed.
-    const GITHUB_CONFIG = {
-      owner: 'odbball-a11y',
-      repo: 'Rundash',
-      workflow: 'fetch_data.yml',
-      branch: 'main',
-    };
-    const PAT_KEY = 'rundash_github_pat';
-
-    function getPat(forcePrompt = false) {
-      let pat = null;
-      try { pat = localStorage.getItem(PAT_KEY); } catch (e) {}
-      if (!pat || forcePrompt) {
-        pat = prompt('Paste your GitHub fine-grained token (Actions: read & write on Rundash). It is saved only in this browser.');
-        if (pat) {
-          pat = pat.trim();
-          try { localStorage.setItem(PAT_KEY, pat); } catch (e) {}
-        }
-      }
-      return pat;
-    }
-
     async function triggerRefresh() {
       const btn = document.getElementById('refreshBtn');
-      const toast = document.getElementById('refreshStatus');
-      const toastText = document.getElementById('refreshStatusText');
-
-      const pat = getPat();
-      if (!pat) return;
-
       btn.classList.add('loading');
-      toast.classList.add('visible');
-      toastText.textContent = 'Triggering data refresh...';
-
-      const url = `https://api.github.com/repos/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/actions/workflows/${GITHUB_CONFIG.workflow}/dispatches`;
-
       try {
-        const resp = await fetch(url, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${pat}`,
-            'Accept': 'application/vnd.github.v3+json',
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ ref: GITHUB_CONFIG.branch }),
-        });
-
-        if (resp.status === 204) {
-          toastText.textContent = '✓ Workflow triggered! Data will update in ~2 min. Auto-reloading...';
-          setTimeout(() => {
-            toastText.textContent = 'Checking for updated data...';
-            pollForUpdate();
-          }, 90000);
-        } else {
-          const body = await resp.text();
-          if (resp.status === 401 || resp.status === 403) {
-            try { localStorage.removeItem(PAT_KEY); } catch (e) {}
-          }
-          toastText.textContent = `✗ GitHub API error (${resp.status}): ${body}`;
-          btn.classList.remove('loading');
-          setTimeout(() => toast.classList.remove('visible'), 5000);
-        }
+        const resp = await fetch('/api/sync', { cache: 'no-store' });
+        const result = await resp.json().catch(() => ({}));
+        if (!resp.ok) throw new Error(result.error || resp.status);
+        await checkForNewRuns();
+        showToast(result.changed ? 'Updated with new data' : 'Already up to date');
       } catch (err) {
-        toastText.textContent = '✗ Network error: ' + err.message;
+        showToast('Refresh failed: ' + err.message);
+      } finally {
         btn.classList.remove('loading');
-        setTimeout(() => toast.classList.remove('visible'), 5000);
-      }
-    }
-
-    async function pollForUpdate(attempts = 0) {
-      if (attempts > 10) {
-        document.getElementById('refreshStatusText').textContent = 'Timeout - try reloading manually.';
-        document.getElementById('refreshBtn').classList.remove('loading');
-        setTimeout(() => document.getElementById('refreshStatus').classList.remove('visible'), 5000);
-        return;
-      }
-
-      const meta = await loadJSON('metadata.json');
-      const currentTime = document.getElementById('lastUpdated').dataset.raw;
-
-      if (meta && meta.last_updated && meta.last_updated !== currentTime) {
-        // New data arrived - reload everything
-        document.getElementById('refreshStatusText').textContent = '✓ Data updated! Reloading...';
-        setTimeout(() => location.reload(), 1000);
-      } else {
-        // Not yet - check again in 15s
-        setTimeout(() => pollForUpdate(attempts + 1), 15000);
       }
     }
 
     // -----------------------------------------------------------------------
     // Init
     // -----------------------------------------------------------------------
-    // Live Strava activities from the Netlify backend (instant via webhook).
-    async function loadStrava() {
+    // Live data from the Netlify backend (intervals.icu, synced every 5 min).
+    async function loadLive() {
       try {
-        const resp = await fetch(`/api/activities?t=${Date.now()}`, { cache: 'no-store' });
+        const resp = await fetch(`/api/data?t=${Date.now()}`, { cache: 'no-store' });
         if (!resp.ok) return null;
         const data = await resp.json();
         return data && Array.isArray(data.activities) && data.activities.length ? data : null;
       } catch (e) { return null; }
     }
 
-    let stravaStamp = null;
+    let liveStamp = null;
 
     async function init() {
       // Load all data in parallel
-      const [strava, runalyzeActivities, hrv, sleep, restHR, metadata] = await Promise.all([
-        loadStrava(),
+      const [live, runalyzeActivities, rHrv, rSleep, rRestHR, metadata] = await Promise.all([
+        loadLive(),
         loadJSON('activities.json'),
         loadJSON('hrv.json'),
         loadJSON('sleep.json'),
@@ -761,11 +689,15 @@
         updatedEl.textContent = 'No data yet — click Refresh';
       }
 
-      // Prefer live Strava activities; fall back to the Runalyze export.
-      const activities = strava ? strava.activities : runalyzeActivities;
-      if (strava) {
-        stravaStamp = strava.last_updated;
-        updatedEl.textContent = 'Live · runs updated ' + new Date(strava.last_updated).toLocaleString('en-GB');
+      // Prefer live intervals.icu data; fall back to the old Runalyze files.
+      const activities = live ? live.activities : runalyzeActivities;
+      const hrv = live && live.hrv.length ? live.hrv : rHrv;
+      const sleep = live && live.sleep.length ? live.sleep : rSleep;
+      const restHR = live && live.restHR.length ? live.restHR : rRestHR;
+      window.__fitness = live ? live.fitness : null;
+      if (live) {
+        liveStamp = live.last_updated;
+        updatedEl.textContent = liveLabel(live);
       }
 
       // Render
@@ -792,15 +724,22 @@
         }
       } catch (e) { /* offline - try again later */ }
     }
+    function liveLabel(live) {
+      return 'Live · checked ' + new Date(live.last_checked || live.last_updated)
+        .toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+    }
+
     async function checkForNewRuns() {
-      const strava = await loadStrava();
-      if (strava && strava.last_updated !== stravaStamp) {
-        if (stravaStamp) showToast('New activity: ' + (strava.activities[0]?.title || 'run'));
-        stravaStamp = strava.last_updated;
-        renderStats(strava.activities, window.__hrv, window.__sleep, window.__restHR);
-        renderActivities(strava.activities);
-        document.getElementById('lastUpdated').textContent =
-          'Live · runs updated ' + new Date(strava.last_updated).toLocaleString('en-GB');
+      const live = await loadLive();
+      if (!live) return;
+      document.getElementById('lastUpdated').textContent = liveLabel(live);
+      if (live.last_updated !== liveStamp) {
+        if (liveStamp) showToast('New data: ' + (live.activities[0]?.title || 'update'));
+        liveStamp = live.last_updated;
+        window.__fitness = live.fitness;
+        renderStats(live.activities, live.hrv, live.sleep, live.restHR);
+        renderActivities(live.activities);
+        renderMetrics(live.hrv, live.sleep, live.restHR);
       }
     }
 
@@ -812,7 +751,7 @@
     }
 
     setInterval(checkForNewData, 2 * 60 * 1000);   // Runalyze health data
-    setInterval(checkForNewRuns, 30 * 1000);       // Strava runs (near instant)
+    setInterval(checkForNewRuns, 60 * 1000);       // live data (backend syncs every 5 min)
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible') { checkForNewData(); checkForNewRuns(); }
     });
