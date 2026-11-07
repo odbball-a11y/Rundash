@@ -25,6 +25,22 @@ are labelled **est.**
 | Running Fitness sub-scores | Endurance / Threshold / Speed / Sprint each tied to a pace band = Aerobic Endurance / Threshold / Anaerobic Endurance / Anaerobic Power zones | Dashboard card pace ranges match the pace-zone table exactly |
 | Race predictor | 5k 16:37 · 10k 34:11 · HM 1:14:44 · M 2:33:34 → implied Riegel exponent ≈ 1.04–1.05 (not a single constant; COROS's model is proprietary) | Dashboard card. Ours: Riegel-style from Running Fitness / best efforts, labelled est. |
 
+
+
+### Running Fitness (COROS article "Introducing Running Fitness", 09/2024)
+- Overall score and four abilities, each on a **40–100** scale, calculated from the **last 6 weeks** of runs (rolling; moves slowly).
+- Current app labels: **Base · Endurance · Tempo · Sprint** (older Training Hub screenshot: Endurance · Threshold · Speed · Sprint). Each shows a score and its training pace band.
+
+| Ability | Distance focus | COROS evaluation criterion | Improve by training in | Our input |
+|---|---|---|---|---|
+| Base | > 30 km | Slowest pace of the Aerobic Power zone | Aerobic Endurance zone, 1–2 h continuous | ✅ from pace zones |
+| Endurance | ~10 km | Threshold pace | Threshold zone, 15–30 min intervals | 🟡 detected threshold pace |
+| Speed / Tempo | ~3 km | VO₂max | Anaerobic Endurance zone, 3–7 min intervals | 🟡 our VO₂max est. |
+| Sprint | ~400 m | Fastest pace held for 30–60 s | Anaerobic Power zone, short sprints | ✅ best 30–60 s from pace streams |
+
+- **Score mapping is not a plain pace → score table.** Published examples disagree with that: athlete B has faster bands than athlete A but lower Endurance/Tempo scores, and the Training Hub example scores 96 with ~6:30/mi paces. COROS likely grades by age/sex or another model. **Ours:** convert each criterion to a VDOT-style equivalent and map onto 40–100, labelled est.
+- Running Fitness drives the **Race Predictor** and the **6 pace zones**.
+
 **Scale note:** an "Optimized" athlete in the 4.0 promo shows Base Fitness 123, Load Impact 140.
 Our current CTL (intervals load) for the user is ~13.5, so per-workout load needs calibrating to
 COROS-like ranges. Real COROS values from a known week would let us calibrate exactly.
