@@ -5,7 +5,7 @@ import { PageHeader, Card, Loading, ErrorState, Seg, Info, Icon } from "../compo
 import { LineChart, BarChart } from "../components/Charts.jsx";
 import * as C from "../components/Cards.jsx";
 import PlanCard from "../components/PlanCard.jsx";
-import { fmtDate, fmtDur, fmtKm, fmtPace, fmtNum, ZONE_COLORS } from "../format.js";
+import { fmtDate, fmtDur, fmtKm, fmtPace, fmtNum, ZONE_COLORS, rollingMean } from "../format.js";
 import { useFilteredActivities, Stats } from "./Activities.jsx";
 import { useRefresh } from "./Progress.jsx";
 
@@ -112,7 +112,10 @@ export function EvoLab() {
           {vo2.length > 1 ? <LineChart labels={vo2.map((r) => fmtDate(r.date))} series={[{ label: "VO₂max (Garmin)", data: vo2.map((r) => r.value), color: "#a78bfa", fill: true }]} /> : <div className="na">Not enough VO₂max readings in this range</div>}
         </Card>
         <Card title="Resting Heart Rate">
-          <LineChart labels={rhr.map((r) => fmtDate(r.date))} series={[{ label: "RHR", data: rhr.map((r) => r.value), color: "#f87171", fill: true }]} />
+          <LineChart legend labels={rhr.map((r) => fmtDate(r.date))} series={[
+            { label: "7-day average", data: rollingMean(rhr, 7), color: "#f87171", fill: true, width: 2.5 },
+            { label: "Daily", data: rhr.map((r) => r.value), color: "#f8717155", width: 1 },
+          ]} />
         </Card>
       </div>
     </>

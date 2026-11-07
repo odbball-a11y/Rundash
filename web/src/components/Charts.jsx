@@ -40,7 +40,7 @@ export function LineChart({ labels, series, height = "", yMin, yMax, legend = fa
       labels,
       datasets: series.map((s) => ({
         label: s.label, data: s.data, borderColor: s.color, backgroundColor: s.fill ? s.color + "22" : s.color,
-        fill: !!s.fill, tension: 0.3, pointRadius: 0, borderWidth: 2, spanGaps: true,
+        fill: !!s.fill, tension: 0.3, pointRadius: 0, borderWidth: s.width || 2, spanGaps: true,
         borderDash: s.dashed ? [5, 4] : undefined, yAxisID: s.axis || "y",
       })),
     },

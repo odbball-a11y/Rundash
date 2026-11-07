@@ -5,7 +5,7 @@ import { useAll } from "../api.js";
 import { PageHeader, Card, Loading, ErrorState, Seg, Info, Est, NA, Gauge } from "../components/UI.jsx";
 import { LineChart, BarChart } from "../components/Charts.jsx";
 import * as C from "../components/Cards.jsx";
-import { fmtDate, fmtNum, fmtDur, fmtPace, fmtHours, STATUS_COLOR, RECOVERY_COLOR } from "../format.js";
+import { fmtDate, fmtNum, fmtDur, fmtPace, fmtHours, STATUS_COLOR, RECOVERY_COLOR, rollingMean } from "../format.js";
 
 const RANGES = [["28", "4W"], ["84", "12W"], ["182", "6M"], ["365", "1Y"]];
 function useRange(def = "84") { const [r, setR] = useState(def); return [Number(r), <Seg options={RANGES} value={r} onChange={setR} />]; }
@@ -191,11 +191,31 @@ export function RacePredictorDetail() {
 export function RestingHrDetail() {
   const [days, seg] = useRange();
   return <Wrap title="Resting Heart Rate">{({ data }) => {
-    const rows = (data.restHR || []).slice(0, days).reverse();
-    return <Card title="Resting heart rate" right={<span style={{ marginLeft: "auto" }}>{seg}</span>}>
-      {!rows.length ? <NA>No data</NA> : <LineChart height="lg" labels={rows.map((r) => fmtDate(r.date))} series={[{ label: "RHR (bpm)", data: rows.map((r) => r.value), color: "#f87171", fill: true }]} />}
-      <p className="lbl">A resting heart rate several beats above your normal can mean fatigue, stress or illness.</p>
-    </Card>;
+    const all = (data.restHR || []).slice().reverse();              // oldest first
+    const avgAll = rollingMean(all, 7);                              // computed on full history so the start of a range isn't blank
+    const cut = all.length - Math.min(days, all.length);
+    const rows = all.slice(cut), avg = avgAll.slice(cut);
+    const vals = (arr) => arr.filter((x) => x != null);
+    const last7 = avgAll[avgAll.length - 1];
+    const normal30 = (() => { const v = vals(all.slice(-30).map((r) => r.value)).sort((a, b) => a - b); return v.length ? v[Math.floor(v.length / 2)] : null; })();
+    const ago = avgAll[avgAll.length - 1 - 90];
+    const trend = last7 != null && ago != null ? Math.round((last7 - ago) * 10) / 10 : null;
+    return <div className="stack">
+      <Card title="Summary">
+        <div className="trio num" style={{ marginTop: 0 }}>
+          <div><div className="v">{fmtNum(last7, 1)}</div><div className="lbl">7-day average</div></div>
+          <div><div className="v">{normal30 ?? "—"}</div><div className="lbl">30-day normal</div></div>
+          <div><div className="v" style={{ color: trend == null ? undefined : trend <= 0 ? "var(--green)" : "var(--orange)" }}>{trend == null ? "—" : `${trend > 0 ? "+" : ""}${trend}`}</div><div className="lbl">vs 3 months ago</div></div>
+        </div>
+      </Card>
+      <Card title="Resting heart rate" right={<span style={{ marginLeft: "auto" }}>{seg}</span>}>
+        {!rows.length ? <NA>No data</NA> : <LineChart height="lg" legend labels={rows.map((r) => fmtDate(r.date))} series={[
+          { label: "7-day average", data: avg, color: "#f87171", fill: true, width: 2.5 },
+          { label: "Daily", data: rows.map((r) => r.value), color: "#f8717155", width: 1 },
+        ]} />}
+        <p className="lbl">The bold line is your 7-day average; daily readings are shown faintly behind it. A 7-day average several beats above your normal can mean fatigue, stress or illness; a slow fall over months usually means improving aerobic fitness.</p>
+      </Card>
+    </div>;
   }}</Wrap>;
 }
 

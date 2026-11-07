@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Card, Info, Gauge, Bar, Badge, Est, NA, Icon, Seg } from "./UI.jsx";
 import { LineChart, BarChart } from "./Charts.jsx";
-import { fmtDur, fmtPace, fmtKm, fmtHours, fmtDate, fmtNum, STATUS_COLOR, RECOVERY_COLOR, ZONE_COLORS } from "../format.js";
+import { fmtDur, fmtPace, fmtKm, fmtHours, fmtDate, fmtNum, STATUS_COLOR, RECOVERY_COLOR, ZONE_COLORS, rollingMean } from "../format.js";
 import { Link } from "react-router-dom";
 
 const M = (m, k) => m?.methods?.[k];
@@ -125,7 +125,10 @@ export function RestingHrCard({ data, to = "/progress/resting-hr" }) {
     <Card title="Resting Heart Rate" to={to}>
       {!last ? <NA>No resting heart rate yet</NA> : <>
         <div><span className="big num">{last.value}</span><span className="unit">bpm · {fmtDate(last.date)}</span></div>
-        <LineChart height="sm" labels={rows.map((r) => fmtDate(r.date))} series={[{ label: "RHR", data: rows.map((r) => r.value), color: "#f87171", fill: true }]} />
+        <LineChart height="sm" labels={rows.map((r) => fmtDate(r.date))} series={[
+          { label: "7-day average", data: rollingMean(rows, 7), color: "#f87171", fill: true, width: 2.5 },
+          { label: "Daily", data: rows.map((r) => r.value), color: "#f8717155", width: 1 },
+        ]} />
       </>}
     </Card>
   );
