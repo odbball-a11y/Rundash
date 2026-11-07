@@ -119,33 +119,47 @@ widgets layout), COROS-hardware-only metrics, other sports until running is comp
 
 ---
 
-## 3. Missing data fields in the Garmin pipeline
+## 3. Data available from the Garmin pipeline (field inventory, 7 Nov 2026)
 
-Current pipeline keeps only an activity summary and daily wellness rows. Needed:
+Source: `/api/inventory` — 133 activities (132 Run, 1 Ride), 367 wellness days, details for 16 runs at time of check.
+Device: Garmin Venu Sq 2 → intervals.icu.
 
-| Field / dataset | Needed for | Source | Status |
-|---|---|---|---|
-| Activity **streams**: time, distance, HR, pace/velocity, cadence, altitude, lat/lng, grade | Charts, zoom, zones, load, efficiency, sprint ability, maps | intervals.icu activity streams | ⬜ add (store per activity in Blobs) |
-| **Laps / intervals** with start/end index | Lap table, structured-workout phases, effort accuracy | intervals.icu activity intervals/laps | ⬜ add |
-| Best efforts (1 km … M, 30–60 s) | PRs, Sprint ability, race predictor | compute from streams (or intervals.icu) | ⬜ |
-| Total ascent/descent, calories, max HR, moving vs elapsed time | Summary grid | intervals.icu activity | 🟡 partly stored |
-| Weather (temp, wind) | Activity header | intervals.icu (if present) | ❓ verify |
-| Device name, sport sub-type (Run / Trail / Treadmill / Track) | Filters, which runs count for EvoLab | intervals.icu activity | ⬜ |
-| Running dynamics (stride, GCT, VO) | Activity detail | ❌ Venu Sq 2 has none | n/a |
-| Running power | Summary, zones | ❌ | n/a |
-| Garmin Training Effect (aerobic/anaerobic) | Compare with our TE | ❓ verify in intervals.icu fields | verify |
-| Wellness: steps, resting HR, sleep secs, sleep score, SpO₂, weight | Progress cards | intervals.icu wellness | ✅ (steps/sleep score to verify) |
-| Sleep stages timeline | Sleep detail | ❓ likely not exposed | verify |
-| Overnight HRV | HRV card | ❌ device | n/a |
-| Body Battery / stress | Readiness context | ❓ | verify |
-| User settings: max HR, rest HR, LTHR, TP, zone type/% , goals, units | All metrics | our DB | ⬜ |
-| Plans, workouts, events, labels, phases, notes, RPE, comments, ignored PRs, EvoLab-disabled flag | Calendar, libraries | our DB | ⬜ |
-| Daily metric snapshots (append-only) | History charts, audit | our DB | ⬜ |
+### 3.1 Activity summary fields (per run)
+✅ distance, moving/elapsed time, avg/max speed, avg/max HR, **calories**, ascent/descent, min/avg/max altitude,
+avg cadence, avg step length, avg stride, **GAP** (grade-adjusted pace), device name, lap count,
+**HR zone times** (`icu_hr_zone_times`, `icu_hr_zones`), **lthr**, **threshold pace** (`pace`), athlete max HR,
+resting HR, weight, intervals.icu load (`icu_training_load`, `hr_load`), **TRIMP**, intensity, CTL/ATL, polarization index,
+warm-up/cool-down time, achievements (16), weather flag (`has_weather`, no weather values seen).
+❌ Garmin Training Effect, per-run VO₂max, power, running dynamics (GCT, vertical oscillation), temperature.
 
-First step of the build: a read-only **field inventory** endpoint that lists which intervals.icu
-fields actually arrive for this athlete (names and counts only, no values), to settle every ❓.
+### 3.2 Second-by-second streams
+✅ time, distance, heartrate, velocity_smooth, cadence, altitude, fixed_altitude (corrected), grade_smooth, latlng.
+❌ watts, temp, respiration.
 
----
+### 3.3 Laps / intervals (per lap)
+✅ start/end index and time, moving/elapsed time, distance, type (work/recovery), zone, intensity, avg/min/max speed,
+**GAP**, avg/min/max HR, avg/min/max cadence, elevation gain, min/max altitude, avg gradient, step length, stride, group id.
+
+### 3.4 Wellness (daily)
+✅ resting HR (365 days), steps (364), sleep duration (356), sleep score + quality (245), **Garmin VO₂max (127)**,
+intervals.icu CTL/ATL/ramp rate, weight (1).
+❌ overnight HRV, SpO₂, Body Battery, stress, sleep stages, daily calories / active minutes, intraday HR/steps.
+
+### 3.5 Consequences for the parity matrix
+| Item | Change |
+|---|---|
+| A3 Daily activity card | Steps ✅; active kcal and exercise time = sum of the day's activities (labelled) |
+| A10 Sleep | Duration + score + quality ✅; stage timeline **n/a** |
+| A11 Overnight HRV | **n/a** on this watch |
+| E6 VO₂max | Use **Garmin VO₂max** from wellness (exact source value); our estimate only as fallback |
+| A14 Activity detail | Charts, laps, zones, map all ✅; power / running dynamics / weather **n/a** |
+| Effort Pace | Seed with intervals.icu **GAP** (population model) — label est. until personalised |
+| Thresholds | Seed LTHR / threshold pace / max HR from intervals.icu settings; our detection refines them |
+| Training Effect | **est.** only (Garmin TE not available) |
+
+### 3.6 Still to store in our own data
+User settings (zones, goals, units), plans, workouts, events, labels, phases, notes/RPE/comments,
+ignored PRs, EvoLab-disabled flags, append-only daily metric snapshots.
 
 ## 4. Analytics: exact vs approximated
 
@@ -168,7 +182,7 @@ fields actually arrive for this athlete (names and counts only, no values), to s
 | Training Effect (aero/anaero) | From load per minute split at LT; 0–5 scale + 6 labels | Load/min above vs below LTHR mapped to 0–5 | **est.** (labels exact) |
 | Training Focus | Load per threshold pace zone → Easy/Base/Tempo/Threshold/VO₂max/Anaerobic | Largest-load zone with tie rules | **est.** |
 | Running Fitness + 4 abilities | 40–100; criteria: Base = slowest Aerobic Power pace, Endurance = TP, Speed = VO₂max, Sprint = best 30–60 s; 6 weeks | VDOT-style equivalence per criterion → 40–100 | **est.** (COROS examples show non-monotonic pace→score) |
-| VO₂max | From HR + pace of outdoor runs; stable | Daniels oxygen cost ÷ %VO₂max from %HRmax, smoothed over 6 weeks | **est.** |
+| VO₂max | From HR + pace of outdoor runs; stable | **Garmin VO₂max** from wellness (source value); fallback: Daniels oxygen cost ÷ %VO₂max from %HRmax | Garmin value (not COROS's) / **est.** fallback |
 | Threshold pace / LTHR detection | From qualifying 25-min runs | Best sustained 20–60 min effort model | **est.** |
 | Race Predictor | 6 weeks; distances independent | 5k/10k from Speed+Endurance, HM from Endurance, M from Endurance+Base and long-run volume | **est.** |
 | EvoLab eligibility | 25-min continuous outdoor run ≥ 65% HRR (+rest); updates if one every 90 days | Same rules | **exact** |
