@@ -19,6 +19,12 @@ are labelled **est.**
 | Intensity Trend | Load Impact ÷ Base Fitness, shown as % (rounded down) | App 4.0 screen: 140 / 123 = 113.8% → "113%" |
 | HR zones (old app default) | 5 zones at 50 / 60 / 70 / 80 / 90 % of max HR | Long Run screen: 93‑110, 111‑128, 129‑147, 148‑165, >165 ⇒ max HR ≈ 185 |
 
+| Intensity Trend (2nd check) | Training Hub dashboard: Load Impact 26 / Base Fitness 72 = 36.1% → "36%" | ✅ confirmed twice |
+| Threshold HR zones (Training Hub) | 6 zones from LTHR: Recovery < 80% · Aerobic Endurance 80–90% · Aerobic Power 90–95% · Threshold 95–102% · Anaerobic Endurance 102–106% · Anaerobic Power > 106% | LTHR 161 → <129, 129‑145, 146‑153, 154‑164, 165‑171, >171 |
+| Threshold pace zones | 6 zones from threshold pace (time per distance): Recovery > 136% · Aerobic Endurance 114–136% · Aerobic Power 106–114% · Threshold 98–106% · Anaerobic Endurance 90.5–98% · Anaerobic Power < 90.5% | TP 5'38"/mi → >7'40", 6'26"–7'40", 5'59"–6'25", 5'32"–5'58", 5'06"–5'31", <5'06" (±1 s rounding) |
+| Running Fitness sub-scores | Endurance / Threshold / Speed / Sprint each tied to a pace band = Aerobic Endurance / Threshold / Anaerobic Endurance / Anaerobic Power zones | Dashboard card pace ranges match the pace-zone table exactly |
+| Race predictor | 5k 16:37 · 10k 34:11 · HM 1:14:44 · M 2:33:34 → implied Riegel exponent ≈ 1.04–1.05 (not a single constant; COROS's model is proprietary) | Dashboard card. Ours: Riegel-style from Running Fitness / best efforts, labelled est. |
+
 **Scale note:** an "Optimized" athlete in the 4.0 promo shows Base Fitness 123, Load Impact 140.
 Our current CTL (intervals load) for the user is ~13.5, so per-workout load needs calibrating to
 COROS-like ranges. Real COROS values from a known week would let us calibrate exactly.
@@ -87,7 +93,52 @@ COROS-like ranges. Real COROS values from a known week would let us calibrate ex
 
 ---
 
+### S5 · Training Hub — Dashboard (web) — source: COROS "Welcome to the Training Hub" article
+Layout: left icon rail (profile, athletes, athlete settings, avatar, notifications, menu); top tabs
+**Dashboard · EvoLab Metrics · Activity List · Calendar**; card grid, each card with ⓘ.
+
+| Card | Contents | Data |
+|---|---|---|
+| Running Fitness | Gauge score (96.4) + 4 bars: Endurance, Threshold, Speed, Sprint, each with pace band and score | 🟡 equivalent score |
+| Training Status | Status word (*Decreasing*), explanation, Load Impact · Base Fitness · Intensity Trend | ✅ |
+| Threshold Heart Rate Zones | LTHR · Max HR · Resting HR, 6-zone table | ✅ (LTHR detected or set) |
+| Threshold Pace Zones | Threshold pace, 6-zone table | ✅ (TP detected or set) |
+| Recovery | % recovered (100% "Full Recovery"), colour scale Poor → Excellent | 🟡 est. recovery timer from load + RHR/sleep |
+| Overnight HRV | Range status, last-night avg, normal range, 7-day line with normal band | ❌ Venu Sq 2 has no HRV Status → show "needs HRV-capable watch"; offer RHR/sleep card |
+| Weekly Activity | Metric dropdown (Distance…), total vs goal, completion rate, Mon–Sun bars | ✅ |
+| Race Predictor | 5k / 10k / Half / Marathon: time + avg pace | 🟡 est. |
+| Personal Running Record | Period dropdown (4 weeks…) + records table | ✅ best efforts |
+
+### S6 · Training Hub — Activity detail (web)
+- Header: sport icon, editable title, date/time; toolbar icons (export, etc.).
+- **Main chart:** multi-metric overlay (Pace + Heart Rate shown), dual axes, **Custom chart** dropdown to pick metrics, **Time / Distance** x-axis toggle.
+- **Overview strip** under the chart: drag to select/zoom a section (works without laps).
+- **Laps table:** "Lap" dropdown (Lap / splits), columns Lap · Time · Distance · Elev Gain · Avg Pace · Avg HR · Avg Cadence · Effort Accuracy · Effort Pace · Max HR; rest rows greyed; **Best** markers; column chooser (sliders icon).
+- **Right panel:** map with weather, **Summary** grid (Distance, Activity Time, Total Time, Avg Pace, Best mile, Avg HR, Avg Power, Avg Cadence, Elev Gain, Total Descent, Training Load, Calories, Effort Pace, Training Focus), then collapsible **Time in Zones · Comment · Perceived Exertion · Training Log**.
+
+| Element | Data |
+|---|---|
+| Charts, zoom, laps, map, summary | ✅ streams + laps from intervals.icu |
+| Avg Power | ❌ Venu Sq 2 has no running power (hide or "—") |
+| Effort Pace / Effort Accuracy | 🟡 Effort Pace = grade/HR-adjusted pace (intervals GAP as base); Effort Accuracy = how close a lap was to its planned target → needs planned workouts |
+| Weather | 🟡 intervals.icu has weather for activities — check |
+| Training Focus | 🟡 classify by time in zones |
+| Comment / RPE / Training log | ✅ our database |
+
+### S7 · Training Hub — Calendar prediction chart
+- Weekly **training load bars**; planned vs actual shown as split bars (*less than planned* = dark top, *more than planned* = bright top).
+- **Orange = Intensity Trend**, **Green = Base Fitness**, as area + line.
+- **Solid = past**, **dotted = predicted** from planned workouts; "This week" marker; month bands.
+- ✅ fully computable once we store planned workouts with estimated load.
+
+### S8 · Training Hub — Coach / team view (later module)
+- Group list ("Add groups", All Members), athlete table with sortable columns (Weekly Training Load, Weekly Exercise Time, Weekly Exercise Distance, Threshold Pace, Base Fitness), metric chooser, pagination.
+
+### Out of scope
+- COROS watch management (storage, watch faces, custom activities, find device) — COROS-hardware only.
+
 ## Open questions
 1. **Target version:** match the current app (4.0: Progress / Activities / Explore / Profile) and the current Training Hub web, not the 2020 layout. (Recommended.)
 2. Full list of Training Status words and their rules.
-3. Screens still needed: Activities list + filters, Explore, Profile/settings, Training Hub web (dashboard, EvoLab, calendar, plan library, workout builder), all ⓘ panels.
+3. Screens still needed: EvoLab Metrics tab, Activity List + filters, Calendar month/week + workout builder + plan library, app Explore / Profile, all ⓘ panels.
+4. coros.com and static.coros.com are reachable from the build session; support.coros.com is not.
