@@ -59,6 +59,7 @@ export function analyzeActivity(summary, detail, settings) {
       }
     }
     out.hrZoneSeconds = hrTimes; out.paceZoneSeconds = paceTimes;
+    out.hrSpeedBins = hrSpeedBins(s);
     out.focus = trainingFocus(loadByPace);
   } else {
     const l = loadFromAverage(summary.heartRateAvg, summary.duration, rest, max);
@@ -71,4 +72,26 @@ export function analyzeActivity(summary, detail, settings) {
     out.best60sMps = bestSpeedForDuration(s.time, s.distance, 60);
   }
   return out;
+}
+
+// Heart-rate vs (grade-adjusted) speed, binned by 2 bpm, for threshold-pace detection.
+// Skips the first 5 minutes (HR lag), pauses and walking. Grade adjustment (est.):
+// ~3.3% more effort per 1% uphill, clamped to +-10% grade.
+export function hrSpeedBins(s) {
+  const bins = {};
+  if (!s.time || !s.heartrate || !s.velocity_smooth) return bins;
+  const t0 = s.time[0];
+  for (let i = 1; i < s.time.length; i++) {
+    const dt = s.time[i] - s.time[i - 1];
+    if (!(dt > 0) || dt > 5 || s.time[i] - t0 < 300) continue;
+    const hr = s.heartrate[i], v = s.velocity_smooth[i];
+    if (!(hr > 80) || !(v > 1.8)) continue;
+    const g = s.grade_smooth ? Math.max(-10, Math.min(10, s.grade_smooth[i] || 0)) : 0;
+    const vAdj = v * (1 + 0.033 * g);
+    const b = Math.floor(hr / 2) * 2;
+    const e = (bins[b] ||= [0, 0]);
+    e[0] += dt; e[1] += vAdj * dt;
+  }
+  for (const k in bins) bins[k] = [Math.round(bins[k][0]), Math.round(bins[k][1])];
+  return bins; // { hrBin: [seconds, speed*seconds] }
 }
