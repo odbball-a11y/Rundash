@@ -192,13 +192,16 @@ export function RestingHrDetail() {
   const [days, seg] = useRange();
   return <Wrap title="Resting Heart Rate">{({ data }) => {
     const all = (data.restHR || []).slice().reverse();              // oldest first
-    const avgAll = rollingMean(all, 7);                              // computed on full history so the start of a range isn't blank
+    // Smoothing window grows with the range so long views show the trend, not week-to-week noise.
+    const win = days >= 365 ? 28 : days >= 182 ? 14 : 7;
+    const avg7 = rollingMean(all, 7);
+    const avgAll = win === 7 ? avg7 : rollingMean(all, win);         // full history so a range never starts blank
     const cut = all.length - Math.min(days, all.length);
     const rows = all.slice(cut), avg = avgAll.slice(cut);
     const vals = (arr) => arr.filter((x) => x != null);
-    const last7 = avgAll[avgAll.length - 1];
+    const last7 = avg7[avg7.length - 1];
     const normal30 = (() => { const v = vals(all.slice(-30).map((r) => r.value)).sort((a, b) => a - b); return v.length ? v[Math.floor(v.length / 2)] : null; })();
-    const ago = avgAll[avgAll.length - 1 - 90];
+    const ago = avg7[avg7.length - 1 - 90];
     const trend = last7 != null && ago != null ? Math.round((last7 - ago) * 10) / 10 : null;
     return <div className="stack">
       <Card title="Summary">
@@ -210,10 +213,10 @@ export function RestingHrDetail() {
       </Card>
       <Card title="Resting heart rate" right={<span style={{ marginLeft: "auto" }}>{seg}</span>}>
         {!rows.length ? <NA>No data</NA> : <LineChart height="lg" legend labels={rows.map((r) => fmtDate(r.date))} series={[
-          { label: "7-day average", data: avg, color: "#f87171", fill: true, width: 2.5 },
+          { label: `${win}-day average`, data: avg, color: "#f87171", fill: true, width: 2.5 },
           { label: "Daily", data: rows.map((r) => r.value), color: "#f8717155", width: 1 },
         ]} />}
-        <p className="lbl">The bold line is your 7-day average; daily readings are shown faintly behind it. A 7-day average several beats above your normal can mean fatigue, stress or illness; a slow fall over months usually means improving aerobic fitness.</p>
+        <p className="lbl">The bold line is your {win}-day average (longer ranges use a longer average); daily readings are shown faintly behind it. A 7-day average several beats above your normal can mean fatigue, stress or illness; a slow fall over months usually means improving aerobic fitness.</p>
       </Card>
     </div>;
   }}</Wrap>;
