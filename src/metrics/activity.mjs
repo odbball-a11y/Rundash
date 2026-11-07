@@ -2,6 +2,7 @@
 import { loadFromStream, loadFromAverage } from "./load.mjs";
 import { lthrZones, paceZones, zoneOfHr, zoneOfPace } from "./zones.mjs";
 import { trainingFocus } from "./fitness.mjs";
+import { epocFromStream } from "./epoc.mjs";
 
 export const BEST_DISTANCES = { "1k": 1000, "1mi": 1609.344, "3k": 3000, "5k": 5000, "10k": 10000, half: 21097.5, marathon: 42195 };
 
@@ -60,6 +61,7 @@ export function analyzeActivity(summary, detail, settings) {
     }
     out.hrZoneSeconds = hrTimes; out.paceZoneSeconds = paceTimes;
     out.hrSpeedBins = hrSpeedBins(s);
+    out.peakEpoc = epocFromStream(s.time, s.heartrate, { rest, max, vo2max: settings.vo2max || 45 });
     out.focus = trainingFocus(loadByPace);
   } else {
     const l = loadFromAverage(summary.heartRateAvg, summary.duration, rest, max);

@@ -253,3 +253,24 @@ export function VO2Card({ m, data, to = "/progress/vo2max" }) {
 }
 
 export { Link };
+
+export function RecoveryTimeCard({ m, to = "/progress/recovery-time" }) {
+  const r = m?.current?.recoveryTime;
+  const color = !r ? "var(--text)" : r.hours <= 0 ? "var(--green)" : r.hours <= 24 ? "var(--cyan)" : r.hours <= 48 ? "var(--orange)" : "var(--red)";
+  return (
+    <Card title="Recovery Time" to={to} info={<Info title="Recovery Time" method={M(m, "recoveryTime")}>
+      <p>Estimated time until you're ready for another comparable hard session. It starts from how hard your recent runs were for you (Training Effect from heart-rate-based EPOC), then adjusts for last night's sleep, your resting heart rate and how you said you felt, each compared with your own normal.</p>
+      <p>This is an estimate to guide training, not a medical measurement. It can't tell whether muscles, tendons or your nervous system have fully recovered, so listen to your body.</p>
+    </Info>}>
+      {!r ? <NA>Needs runs with heart rate</NA> : <>
+        <div className="row between">
+          <div><span className="big num" style={{ color }}>{r.hours}</span><span className="unit">hours</span></div>
+          <div style={{ textAlign: "right" }}><div style={{ fontWeight: 700, color }}>{r.state}</div><div className="lbl">{r.advice}</div></div>
+        </div>
+        {r.modifiers?.length > 0 && <div className="lbl" style={{ marginTop: 8 }}>
+          {r.modifiers.slice(0, 3).map((x) => <div key={x.key}>{x.hours > 0 ? "▲" : "▼"} {x.label} <b className="num" style={{ color: x.hours > 0 ? "var(--orange)" : "var(--green)" }}>{x.hours > 0 ? "+" : ""}{x.hours} h</b></div>)}
+        </div>}
+      </>}
+    </Card>
+  );
+}

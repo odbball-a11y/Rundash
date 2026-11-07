@@ -136,7 +136,9 @@ test("computeAll end-to-end on synthetic history", () => {
   }
   const out = computeAll({ activities: acts, actMetrics, wellness: [{ id: "2026-10-30", vo2max: 47, restingHR: 50 }],
     settings: { rest: 50, max: 190, lthr: 168, tpSecPerKm: 270 }, today: "2026-10-31", now: Date.parse("2026-10-31T12:00:00") });
-  assert.equal(out.algorithmVersion, "1.2.2");
+  assert.equal(out.algorithmVersion, "1.3.1");
+  assert.ok(out.current.recoveryTime && Array.isArray(out.current.recoveryTime.history));
+  assert.ok(out.activities[0].peakEpoc > 0);
   assert.ok(out.current.baseFitness > 0);
   assert.ok(out.current.status);
   assert.equal(out.current.vo2Source, "Garmin");
@@ -212,4 +214,48 @@ test("Projection decays without load and rises with it", () => {
   assert.ok(rest[13].baseFitness < 40 && rest[13].loadImpact < rest[13].baseFitness);
   const build = projectSeries(40, 40, Array(14).fill(80));
   assert.ok(build[13].baseFitness > 40 && build[13].intensityTrend > 100);
+});
+
+import { epocConstant, epocFromStream, trainingEffectFromEpoc, activityClass, baseRemaining, hoursForTe, sleepModifier, rhrModifier, feelModifier, pctVo2max } from "../src/metrics/epoc.mjs";
+
+test("EPOC model reproduces Firstbeat Fig. 5 curves and Table 4 typical values", () => {
+  near(epocConstant(0.7, 30), 85, 10, "70% 30 min");
+  near(epocConstant(0.7, 60), 135, 12, "70% 60 min");
+  near(epocConstant(0.6, 60), 62, 8, "60% 60 min");
+  const easyHour = epocConstant(0.6, 60);
+  assert.ok(easyHour >= 40 && easyHour <= 90, `60 min easy run ${easyHour} (Table 4: 40-90)`);
+  const race10k = epocConstant(0.85, 45);
+  assert.ok(race10k >= 120 && race10k <= 280, `10k race ${race10k} (Table 4: 120-260)`);
+  const walk = epocConstant(0.45, 60);
+  assert.ok(walk >= 10 && walk <= 25, `brisk 1 h walk ${walk} (Table 4: 10-25)`);
+  // Intervals peak lower than continuous at the same high intensity (EPOC falls during rests)
+  const t = Array.from({ length: 1801 }, (_, i) => i);
+  const cont = epocFromStream(t, t.map(() => 170), { rest: 50, max: 185, vo2max: 50 });
+  const intv = epocFromStream(t, t.map((i) => (Math.floor(i / 180) % 2 ? 120 : 170)), { rest: 50, max: 185, vo2max: 50 });
+  assert.ok(intv < cont, `intervals ${intv} < continuous ${cont}`);
+  near(pctVo2max(185, 50, 185, 50), 1, 0.001, "max HR = 100% VO2max");
+});
+
+test("Training Effect from peak EPOC and activity class (Firstbeat Fig. 2)", () => {
+  assert.equal(activityClass(1.5), 6);
+  assert.equal(activityClass(6), 7.5);
+  const te = trainingEffectFromEpoc(110, 6);
+  assert.ok(te >= 3 && te < 4.2, `TE ${te}`);
+  assert.ok(trainingEffectFromEpoc(110, 9) < te, "fitter athlete gets lower TE for same EPOC");
+  assert.equal(trainingEffectFromEpoc(1000, 6), 5);
+});
+
+test("Recovery time accumulates, counts down, caps at 96 h; modifiers move it", () => {
+  assert.equal(hoursForTe(3), 14);
+  near(hoursForTe(3.7), 23.8, 0.1, "20-min run at ~78% VO2max (TE 3.7)");
+  const t0 = Date.parse("2026-11-06T18:00:00Z");
+  assert.equal(Math.round(baseRemaining([{ t: t0, te: 3 }], t0)), 14);
+  assert.equal(baseRemaining([{ t: t0, te: 3 }], t0 + 30 * 3600e3), 0);
+  assert.equal(baseRemaining([{ t: t0, te: 5 }, { t: t0 + 3600e3, te: 5 }, { t: t0 + 7200e3, te: 5 }], t0 + 7200e3), 96);
+  assert.ok(sleepModifier(360, 450)[0].hours > 0, "short sleep adds hours");
+  assert.ok(sleepModifier(540, 450)[0].hours < 0, "long sleep removes hours");
+  assert.equal(rhrModifier(52, 47).hours, 10);
+  assert.equal(rhrModifier(48, 47), null);
+  assert.equal(feelModifier(1).hours, 12);
+  assert.equal(feelModifier(5).hours, -6);
 });

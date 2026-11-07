@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
+import { FEEL_LABELS } from "../../../src/metrics/epoc.mjs";
 import { useAll } from "../api.js";
 import { PageHeader, Card, Loading, ErrorState, Seg, Info, Est, NA, Gauge } from "../components/UI.jsx";
 import { LineChart, BarChart } from "../components/Charts.jsx";
@@ -152,4 +154,48 @@ export function SleepDetail() {
 
 export function Vo2Detail() {
   return <Wrap title="VO₂max">{({ m, data }) => <C.VO2Card m={m} data={data} to={null} />}</Wrap>;
+}
+
+export function RecoveryTimeDetail() {
+  return <Wrap title="Recovery Time">{({ m, data }) => {
+    const r = m.current?.recoveryTime;
+    if (!r) return <Card><div className="na">Needs runs with heart rate</div></Card>;
+    const acts = Object.fromEntries((data?.activities || []).map((a) => [a.id, a]));
+    const recent = (m.activities || []).filter((a) => a.trainingEffect).slice(-8).reverse();
+    const sig = r.signals || {};
+    return <div className="grid">
+      <div className="span2"><C.RecoveryTimeCard m={m} to={null} /></div>
+      <Card title="Why this estimate">
+        <table className="tbl"><tbody>
+          <tr><td>Recent training {r.lastSession ? <span className="lbl">(last run: TE {r.lastSession.te}, +{r.lastSession.hours} h)</span> : ""}</td><td className="num" style={{ textAlign: "right", fontWeight: 600 }}>{r.baseHours} h</td></tr>
+          {r.modifiers.map((x) => <tr key={x.key}><td>{x.label}<div className="lbl">{x.detail}</div></td><td className="num" style={{ textAlign: "right", fontWeight: 600, color: x.hours > 0 ? "var(--orange)" : "var(--green)" }}>{x.hours > 0 ? "+" : ""}{x.hours} h</td></tr>)}
+          <tr><td><b>Estimated recovery time</b></td><td className="num" style={{ textAlign: "right", fontWeight: 700 }}>{r.hours} h</td></tr>
+        </tbody></table>
+        {r.ignoredModifiers?.length > 0 && <p className="lbl">You're already recovered from training, so these didn't shorten it further: {r.ignoredModifiers.map((x) => x.label.toLowerCase()).join(", ")}.</p>}
+        <p className="lbl">Today's signals: sleep {sig.sleepMin ? `${Math.floor(sig.sleepMin / 60)}h ${String(sig.sleepMin % 60).padStart(2, "0")}m` : "—"}{sig.sleepScore != null ? ` (score ${sig.sleepScore})` : ""} · resting HR {sig.restingHR ?? "—"} bpm. Not available from your watch: HRV, stress.</p>
+      </Card>
+      <Card title="Morning recovery time (14 days)">
+        <BarChart labels={r.history.map((h) => fmtDate(h.date, { weekday: "narrow", day: "numeric" }))} series={[{ label: "Hours at 7am", data: r.history.map((h) => h.hours), color: "#f97316" }]} />
+        <p className="lbl">From training only (sleep and heart-rate adjustments apply to today).</p>
+      </Card>
+      <Card title="Recent sessions" className="span2">
+        <div className="scrollx"><table className="tbl num">
+          <thead><tr><th>Date</th><th>Run</th><th>Peak EPOC</th><th>Aerobic TE</th><th>Adds</th><th>Felt</th></tr></thead>
+          <tbody>{recent.map((a) => <tr key={a.id}>
+            <td>{fmtDate(a.date)}</td>
+            <td><Link to={`/activities/${a.id}`} style={{ color: "var(--cyan)" }}>{acts[a.id]?.title || "Run"}</Link></td>
+            <td>{a.peakEpoc ?? "—"}</td><td>{a.trainingEffect?.aerobic} <span className="lbl">{a.trainingEffect?.aerobicLabel}</span></td>
+            <td>{a.recoveryHours != null ? `${a.recoveryHours} h` : "—"}</td><td>{a.feel ? FEEL_LABELS[a.feel] : <Link to={`/activities/${a.id}`} className="lbl">rate</Link>}</td>
+          </tr>)}</tbody>
+        </table></div>
+      </Card>
+      <Card title="How it works" className="span2">
+        <p className="muted">1. <b>Training stress.</b> Each run's heart rate is converted to %VO₂max and accumulated into EPOC (exercise "after-burn"), following Firstbeat's published EPOC model. Your peak EPOC, compared with how much you usually train (activity class {r.activityClass}), gives the aerobic Training Effect.</p>
+        <p className="muted">2. <b>Recovery hours.</b> Each session adds time by Training Effect (TE 1 ≈ 2 h, 2 ≈ 6 h, 3 ≈ 14 h, 4 ≈ 28 h, 5 ≈ 54 h). Hours add up across sessions and count down, up to 96 h.</p>
+        <p className="muted">3. <b>Your body today.</b> Shorter sleep or a resting heart rate above your 30-day normal add time; good sleep, a low resting heart rate and feeling good after your run take time off.</p>
+        <p className="lbl">Kemp Fit's own model: Firstbeat, Garmin and COROS don't publish their recovery formulas. It will learn from how you actually respond in a later version. It is not a medical measurement.</p>
+      </Card>
+      <div className="span2"><C.RecoveryCard m={m} to="/progress/recovery" /></div>
+    </div>;
+  }}</Wrap>;
 }

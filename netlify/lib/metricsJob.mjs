@@ -1,4 +1,5 @@
 // Runs the metric engine over stored data and caches the results.
+import { getStore } from "@netlify/blobs";
 import { store } from "./intervals.mjs";
 import { analyzeActivity, computeAll, resolveSettings, estimateThresholdPace, ALGORITHM_VERSION } from "../../src/metrics/index.mjs";
 import { dayKey } from "../../src/metrics/util.mjs";
@@ -58,7 +59,8 @@ export async function computeAndStore() {
     s.get(K.estimates, { type: "json" }),
   ]);
   const settings = resolveSettings(rawActs || [], rawWell || [], overrides || {}, estimates || {});
-  const result = computeAll({ activities: activities || [], actMetrics: actMetrics || {}, wellness: rawWell || [], settings });
+  const feels = (await getStore({ name: "user", consistency: "strong" }).get("feel", { type: "json" })) || {};
+  const result = computeAll({ activities: activities || [], actMetrics: actMetrics || {}, wellness: rawWell || [], settings, feels });
   const sources = Object.values(actMetrics || {}).reduce((m, x) => ((m[x.source] = (m[x.source] || 0) + 1), m), {});
   result.coverage = { activities: (activities || []).length, analysed: Object.keys(actMetrics || {}).length, loadSource: sources };
   await s.setJSON(K.latest, result);
