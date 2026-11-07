@@ -2,7 +2,7 @@
 // Each output names its method: "exact" = public COROS definition reproduced,
 // "est." = our model of undocumented behaviour, "source" = value taken from Garmin/intervals.icu.
 import { round, dayKey, addDays, daysBetween, weekStart, median } from "./util.mjs";
-import { ewma, intensityTrendPct, statusFromTrend, STATUS_TEXT, BF_DAYS, LI_DAYS } from "./status.mjs";
+import { ewma, intensityTrendPct, statusFromTrend, STATUS_TEXT, BF_DAYS, LI_DAYS, COMING_BACK_DROP } from "./status.mjs";
 import { recoveryAt, recoveryHours, pctFromRemaining, recoveryState, recoveryAdvice } from "./recovery.mjs";
 import { lthrZones, paceZones } from "./zones.mjs";
 import { efficiencyScore, efficiencyLevel } from "./efficiency.mjs";
@@ -10,14 +10,14 @@ import { runningFitness, racePredictor, trainingEffect, vo2FromRun, vdotFromEffo
 import { loadLevel } from "./load.mjs";
 import { trainingEffectFromEpoc, activityClass, baseRemaining, hoursForTe, sleepModifier, rhrModifier, feelModifier, readiness, teExtended, hoursForTeExtended, calibrateScale, pearson } from "./epoc.mjs";
 
-export const ALGORITHM_VERSION = "1.5.1";
+export const ALGORITHM_VERSION = "1.5.2";
 
 export const METHODS = {
   trainingLoad: "est. (TRIMP, calibrated to COROS examples 99/199/295)",
   baseFitness: "est. (42-day EWMA of daily load)",
   loadImpact: "est. (7-day EWMA of daily load)",
   intensityTrend: "exact (Load Impact / Base Fitness)",
-  trainingStatus: "exact bands; Resuming vs Performance split est.",
+  trainingStatus: "exact bands; Resuming vs Performance split est. (Resuming = Base Fitness fell >= 8% over the previous 3 weeks and load is rising again; otherwise Performance)",
   weeklyLoad: "exact (Mon-Sun sum)",
   recommendedWeekly: "est.",
   recovery: "COROS method (est.): recovery hours proportional to Training Load / Base Fitness, max 96 h, same inputs COROS describes (no sleep/HRV); % calibrated to COROS's 64% at 33 h example; exact COROS bands",
@@ -118,7 +118,10 @@ export function computeAll({ activities, actMetrics = {}, wellness = [], setting
   const series = days.map((d, i) => {
     const it = intensityTrendPct(li[i], bf[i]);
     return { date: d, load: Math.round(daily[i]), baseFitness: round(bf[i], 1), loadImpact: round(li[i], 1), intensityTrend: it,
-      status: statusFromTrend(it, i >= 7 ? li[i] > li[i - 7] : false) };
+      status: statusFromTrend(it, {
+        loadRising: i >= 7 ? li[i] > li[i - 7] : false,
+        comingBack: i >= 21 ? bf[i - 21] > 0 && Math.min(...bf.slice(i - 7, i + 1)) < bf[i - 21] * (1 - COMING_BACK_DROP) : false,
+      }) };
   });
   const bfOn = Object.fromEntries(series.map((r) => [r.date, r.baseFitness]));
 

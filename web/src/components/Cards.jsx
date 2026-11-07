@@ -20,6 +20,7 @@ export function TrainingStatusCard({ m, to = "/progress/training-status" }) {
         <div><div className="v">{fmtNum(c.baseFitness)}</div><div className="lbl">Base Fitness</div></div>
         <div><div className="v">{c.intensityTrend ?? "—"}%</div><div className="lbl">Intensity Trend</div></div>
       </div>
+      <WeekStatusStrip series={m?.series} />
     </Card>
   );
 }
@@ -293,5 +294,27 @@ export function RecoveryCard({ m, to = "/progress/recovery", showToggle = true }
         </div>}
       </>}
     </Card>
+  );
+}
+
+// Last 7 days of daily status, so day-to-day flips read as a pattern.
+export function WeekStatusStrip({ series }) {
+  const days = (series || []).slice(-7);
+  if (days.length < 7) return null;
+  const counts = days.reduce((o, d) => ((o[d.status] = (o[d.status] || 0) + 1), o), {});
+  const [top, n] = Object.entries(counts).sort((a, b) => b[1] - a[1])[0] || [];
+  const summary = !top ? "" : n >= 5 ? `Mostly ${top} this week` : n >= 3 ? `Mainly ${top} this week, with some variation` : "Mixed this week";
+  return (
+    <div style={{ marginTop: 14 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 3 }} role="img" aria-label={`Last 7 days: ${days.map((d) => d.status).join(", ")}`}>
+        {days.map((d) => (
+          <div key={d.date} title={`${fmtDate(d.date, { weekday: "short", day: "numeric", month: "short" })}: ${d.status} (${d.intensityTrend}%)`} style={{ textAlign: "center" }}>
+            <div style={{ height: 8, borderRadius: 3, background: STATUS_COLOR[d.status] || "var(--card-2)" }} />
+            <div className="lbl" style={{ fontSize: 10, marginTop: 3 }}>{new Date(d.date).toLocaleDateString("en-GB", { weekday: "narrow" })}</div>
+          </div>
+        ))}
+      </div>
+      <div className="lbl" style={{ marginTop: 4 }}>{summary}</div>
+    </div>
   );
 }

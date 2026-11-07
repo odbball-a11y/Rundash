@@ -55,8 +55,9 @@ test("Training Status bands (EvoLab article)", () => {
   assert.equal(statusFromTrend(100), "Optimized");
   assert.equal(statusFromTrend(99), "Maintaining");
   assert.equal(statusFromTrend(80), "Maintaining");
-  assert.equal(statusFromTrend(79, true), "Resuming");
-  assert.equal(statusFromTrend(50, false), "Performance");
+  assert.equal(statusFromTrend(79, { comingBack: true, loadRising: true }), "Resuming");
+  assert.equal(statusFromTrend(79, { comingBack: false, loadRising: true }), "Performance"); // taper with load ticking up
+  assert.equal(statusFromTrend(50, { comingBack: true, loadRising: false }), "Performance");
   assert.equal(statusFromTrend(36), "Decreasing");
 });
 
@@ -136,7 +137,7 @@ test("computeAll end-to-end on synthetic history", () => {
   }
   const out = computeAll({ activities: acts, actMetrics, wellness: [{ id: "2026-10-30", vo2max: 47, restingHR: 50 }],
     settings: { rest: 50, max: 190, lthr: 168, tpSecPerKm: 270 }, today: "2026-10-31", now: Date.parse("2026-10-31T12:00:00") });
-  assert.equal(out.algorithmVersion, "1.5.1");
+  assert.equal(out.algorithmVersion, "1.5.2");
   assert.equal(out.current.recovery.history.length, 14);
   assert.ok(out.current.recoveryTime.pct >= 0 && out.current.recoveryTime.pct <= 100 && out.current.recoveryTime.state);
   assert.ok(out.activities[0].corosRecoveryHours > 0);

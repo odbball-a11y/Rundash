@@ -11,14 +11,25 @@ export function intensityTrendPct(loadImpact, baseFitness) {
   return Math.floor((loadImpact / baseFitness) * 100);
 }
 
-export function statusFromTrend(pct, loadImpactRising) {
+// ctx (for the 50-79% band, where COROS shows Resuming or Performance; the split is est.):
+//   comingBack: Base Fitness has dropped over the previous 3 weeks (>= 8%)
+//   loadRising: Load Impact is higher than a week ago
+// Resuming  = coming back after a drop and building load again.
+// Performance = otherwise: a taper/ease-off from stable or high fitness.
+// (A plain boolean second argument is still accepted as "loadRising" for older callers.)
+export function statusFromTrend(pct, ctx = {}) {
   if (pct == null) return null;
   if (pct >= 150) return "Excessive";
   if (pct >= 100) return "Optimized";
   if (pct >= 80) return "Maintaining";
-  if (pct >= 50) return loadImpactRising ? "Resuming" : "Performance"; // split is est.
+  if (pct >= 50) {
+    const c = typeof ctx === "boolean" ? { loadRising: ctx, comingBack: ctx } : ctx;
+    return c.comingBack && c.loadRising ? "Resuming" : "Performance";
+  }
   return "Decreasing";
 }
+
+export const COMING_BACK_DROP = 0.08;
 
 export const STATUS_TEXT = {
   Excessive: "Recent training may be overreaching or excessive.",
