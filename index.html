@@ -233,7 +233,7 @@ border-top-color:#e8dcc8;border-radius:50%;animation:spin .8s linear infinite}
 </div>
 <div class="pills" style="margin-bottom:0">
   <div class="pill"><div class="pill-label">ACWR</div><div class="pill-val mono" id="pACWR" style="color:#22c55e">—</div><div class="pill-sub">0.8–1.3 optimal</div></div>
-  <div class="pill"><div class="pill-label">VO₂max</div><div class="pill-val mono" style="color:#a78bfa" id="pVO2">—</div><div class="pill-sub">5-run avg</div></div>
+  <div class="pill"><div class="pill-label">VO₂max</div><div class="pill-val mono" style="color:#a78bfa" id="pVO2">—</div><div class="pill-sub">5-run avg · est.</div></div>
   <div class="pill"><div class="pill-label">RHR</div><div class="pill-val mono" style="color:#6ee7b7" id="pRHR">—</div><div class="pill-sub" id="pRHRsub">bpm today</div></div>
 </div>
 
@@ -300,7 +300,7 @@ border-top-color:#e8dcc8;border-radius:50%;animation:spin .8s linear infinite}
   <div><div class="footer-label">Total Runs</div><div class="footer-val mono" id="fTotal">—</div></div>
   <div style="text-align:right"><div class="footer-label">Data Range</div><div class="footer-small" id="fRange">—</div></div>
 </div>
-<div class="foot-note">live from Garmin via intervals.icu · built with claude</div>
+<div class="foot-note">live from Garmin via intervals.icu · v2 · built with claude</div>
 
 </div><!-- /dashboard -->
 
@@ -350,9 +350,25 @@ function handleCsvFile(e) {
 // original Runalyze CSV used, so all the calculations below are unchanged.
 let liveStamp = null;
 
+// VO2max estimate per run from pace + heart rate (the same idea Runalyze
+// uses): Daniels' oxygen cost of the pace, divided by the share of VO2max
+// implied by average HR as a fraction of max HR (Swain).
+function estimateVo2(a, hrMax) {
+  if (!a.heartRateAvg || !hrMax || a.distance < 2 || a.duration < 600) return 0;
+  const v = (a.distance * 1000) / (a.duration / 60);          // metres per minute
+  const vo2 = -4.60 + 0.182258 * v + 0.000104 * v * v;        // ml/kg/min at that pace
+  const pct = (a.heartRateAvg / hrMax - 0.37) / 0.64;         // fraction of VO2max
+  if (pct < 0.55 || pct > 1.0) return 0;
+  const est = vo2 / pct;
+  return est >= 25 && est <= 85 ? Math.round(est * 10) / 10 : 0;
+}
+
 function intervalsToRows(acts) {
-  return (acts || [])
-    .filter(a => /run/i.test(a.sport || '') && a.date && a.distance > 0)
+  const runsOnly = (acts || []).filter(a => /run/i.test(a.sport || '') && a.date && a.distance > 0);
+  // Max HR: highest recorded across runs (ignores obvious spikes), else a fallback.
+  const maxes = runsOnly.map(a => a.heartRateMax).filter(h => h > 120 && h < 220).sort((x, y) => x - y);
+  const hrMax = maxes.length ? maxes[Math.floor((maxes.length - 1) * 0.98)] : 190;
+  return runsOnly
     .map(a => ({
       sportid: 1094255,
       time: Math.floor(new Date(a.date).getTime() / 1000),
@@ -361,7 +377,7 @@ function intervalsToRows(acts) {
       s: a.duration,                      // seconds
       pulseAvg: a.heartRateAvg || 0,
       trimp: a.trimp || 0,
-      vo2max: a.vo2max || 0,
+      vo2max: a.vo2max || estimateVo2(a, hrMax),
       aerobicDecouplingPace: a.decoupling ?? null,
       splits: `U${a.distance}|${Math.floor(a.duration / 60)}:${String(a.duration % 60).padStart(2, '0')}`,
     }));
