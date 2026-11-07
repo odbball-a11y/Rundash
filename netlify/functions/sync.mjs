@@ -6,7 +6,8 @@ export default async (req) => {
   const full = new URL(req.url).searchParams.get("full") === "1";
   const meta = await store().get("meta", { type: "json" });
   const hasData = meta?.counts?.activities > 0;
-  if (hasData && meta?.last_checked && Date.now() - Date.parse(meta.last_checked) < 60_000) {
+  const cooldown = full ? 15_000 : 60_000;
+  if (hasData && meta?.last_checked && Date.now() - Date.parse(meta.last_checked) < cooldown) {
     return json({ skipped: "checked less than a minute ago", ...meta });
   }
   try {
