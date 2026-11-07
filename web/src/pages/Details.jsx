@@ -193,7 +193,7 @@ export function RestingHrDetail() {
   return <Wrap title="Resting Heart Rate">{({ data }) => {
     const all = (data.restHR || []).slice().reverse();              // oldest first
     // Smoothing window grows with the range so long views show the trend, not week-to-week noise.
-    const win = days >= 365 ? 28 : days >= 182 ? 14 : 7;
+    const win = days >= 365 ? 28 : days >= 182 ? 21 : days >= 84 ? 14 : 7;
     const avg7 = rollingMean(all, 7);
     const avgAll = win === 7 ? avg7 : rollingMean(all, win);         // full history so a range never starts blank
     const cut = all.length - Math.min(days, all.length);
