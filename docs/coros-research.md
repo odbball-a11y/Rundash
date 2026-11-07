@@ -198,8 +198,10 @@ Every value carries `algorithmVersion` and inputs so it can be traced and recalc
 0. **Field inventory + data model** — inventory endpoint ✅; streams + laps ingestion ✅; user data
    (settings, plans, workouts, events, labels, notes, snapshots) in Netlify Blobs for the single-athlete
    app, moving to Postgres only if the team module needs it.
-1. **Metric engine** — standalone, unit-tested module with versioned algorithms (section 4);
-   calibration fixtures from COROS worked examples; side-by-side with intervals.icu load/CTL.
+1. **Metric engine** ✅ v1.0.0 — `src/metrics/` (pure ES modules, `npm test`), cached per activity by
+   algorithm version + thresholds, computed every 5 min, `GET /api/metrics`, append-only daily
+   `snapshots`. Tests pin COROS zone tables, load calibration (99/199/295), Intensity Trend screenshots,
+   status bands, Effort Accuracy example and Daniels race times.
 2. **App shell** — installable responsive web app (React + router), bottom nav on phone,
    top tabs + left rail on desktop, component library (section 6). All screens stubbed.
 3. **Progress dashboard** (A2–A12) with card → detail navigation.

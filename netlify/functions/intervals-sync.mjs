@@ -1,7 +1,9 @@
 // Runs automatically every 5 minutes on Netlify:
-// 1) summaries + wellness, 2) streams/laps for activities still missing them.
+// 1) summaries + wellness, 2) streams/laps for activities still missing them,
+// 3) metric engine (per-activity analysis + daily series + snapshot).
 import { sync } from "../lib/intervals.mjs";
 import { syncDetails } from "../lib/details.mjs";
+import { updateActivityMetrics, computeAndStore } from "../lib/metricsJob.mjs";
 
 export default async () => {
   try {
@@ -15,6 +17,13 @@ export default async () => {
     console.log("detail sync:", JSON.stringify(d));
   } catch (e) {
     console.error("detail sync failed:", e.message);
+  }
+  try {
+    const m = await updateActivityMetrics({ budgetMs: 6000 });
+    const r = await computeAndStore();
+    console.log("metrics:", JSON.stringify({ analysed: m.analysed, pending: m.pending, status: r.current.status }));
+  } catch (e) {
+    console.error("metrics failed:", e.message);
   }
 };
 
