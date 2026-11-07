@@ -136,7 +136,7 @@ test("computeAll end-to-end on synthetic history", () => {
   }
   const out = computeAll({ activities: acts, actMetrics, wellness: [{ id: "2026-10-30", vo2max: 47, restingHR: 50 }],
     settings: { rest: 50, max: 190, lthr: 168, tpSecPerKm: 270 }, today: "2026-10-31", now: Date.parse("2026-10-31T12:00:00") });
-  assert.equal(out.algorithmVersion, "1.5.0");
+  assert.equal(out.algorithmVersion, "1.5.1");
   assert.equal(out.current.recovery.history.length, 14);
   assert.ok(out.current.recoveryTime.pct >= 0 && out.current.recoveryTime.pct <= 100 && out.current.recoveryTime.state);
   assert.ok(out.activities[0].corosRecoveryHours > 0);
@@ -275,6 +275,7 @@ test("Kemp Fit v1.5: hours keep rising beyond TE 5, and calibration follows the 
   assert.equal(teExtended(100, c), trainingEffectFromEpoc(100, c));
   assert.ok(teExtended(300, c) > teExtended(200, c) && teExtended(200, c) > 5, "uncapped above TE 5");
   assert.ok(hoursForTeExtended(5.5) > hoursForTeExtended(5), "hours keep scaling");
+  assert.ok(hoursForTeExtended(8.6) < 100, `gentle growth beyond TE 5: ${hoursForTeExtended(8.6)}`);
   // Too few samples -> prior
   assert.equal(calibrateScale([{ rawHours: 40, hoursToMorning: 14, rhrRise: 1 }]).scale, PRIOR_SCALE);
   // Synthetic athlete whose next-morning RHR follows residual fatigue with true k = 0.5

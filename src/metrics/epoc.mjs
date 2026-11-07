@@ -173,7 +173,9 @@ export function teExtended(peak, c) {
 }
 export function hoursForTeExtended(te) {
   if (te == null) return 0;
-  return te <= 5 ? hoursForTe(te) : 54 + (te - 5) * 26; // continue the TE 4->5 slope
+  // Beyond TE 5 grow logarithmically: v1.5.0 continued the TE 4->5 slope linearly, which sent two
+  // short race-pace 5 km runs to 74 h and 96 h while next-morning resting HR was below normal.
+  return te <= 5 ? hoursForTe(te) : 54 + 26 * Math.log(1 + (te - 5));
 }
 
 // Prior scale from the athlete's history (Nov 2026 analysis: Kemp Fit hours were ~1.5x the
