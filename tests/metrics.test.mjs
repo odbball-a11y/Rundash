@@ -8,7 +8,8 @@ import { recoveryAt, recoveryState } from "../src/metrics/recovery.mjs";
 import { efficiencyLevel } from "../src/metrics/efficiency.mjs";
 import { raceTime, effortAccuracy, teLabel, trainingFocus } from "../src/metrics/fitness.mjs";
 import { bestTimeForDistance, bestSpeedForDuration, analyzeActivity } from "../src/metrics/activity.mjs";
-import { computeAll, resolveSettings } from "../src/metrics/index.mjs";
+import { computeAll, resolveSettings, estimateThresholdPace } from "../src/metrics/index.mjs";
+import { hrSpeedBins } from "../src/metrics/activity.mjs";
 
 const near = (a, b, tol, msg) => assert.ok(Math.abs(a - b) <= tol, `${msg}: ${a} not within ${tol} of ${b}`);
 
@@ -128,7 +129,7 @@ test("computeAll end-to-end on synthetic history", () => {
   }
   const out = computeAll({ activities: acts, actMetrics, wellness: [{ id: "2026-10-30", vo2max: 47, restingHR: 50 }],
     settings: { rest: 50, max: 190, lthr: 168, tpSecPerKm: 270 }, today: "2026-10-31", now: Date.parse("2026-10-31T12:00:00") });
-  assert.equal(out.algorithmVersion, "1.0.0");
+  assert.equal(out.algorithmVersion, "1.1.0");
   assert.ok(out.current.baseFitness > 0);
   assert.ok(out.current.status);
   assert.equal(out.current.vo2Source, "Garmin");
@@ -137,4 +138,25 @@ test("computeAll end-to-end on synthetic history", () => {
   assert.ok(out.personalRecords["5k"].seconds > 0);
   assert.equal(out.activities.length, 30);
   assert.ok(out.activities[0].focus);
+});
+
+test("Threshold pace from pace-HR relationship", () => {
+  // Synthetic athlete: speed = 0.025 * HR - 0.5  -> at LTHR 163: 3.575 m/s = 279.7 s/km
+  const acts = [], actMetrics = {};
+  for (let r = 0; r < 6; r++) {
+    const time = Array.from({ length: 2400 }, (_, i) => i);
+    const hr = time.map((i) => 130 + ((i + r * 300) % 1200) / 1200 * 30);  // 130-160 bpm
+    const v = hr.map((h) => 0.025 * h - 0.5);
+    const id = "r" + r;
+    acts.push({ id, sport: "Run", date: "2026-11-0" + (r + 1) + "T08:00:00" });
+    actMetrics[id] = { hrSpeedBins: hrSpeedBins({ time, heartrate: hr, velocity_smooth: v }) };
+  }
+  const tp = estimateThresholdPace({ activities: acts, actMetrics, lthr: 163, vo2max: 43, today: "2026-11-07" });
+  near(tp.tpSecPerKm, 279.7, 4, "threshold pace");
+  assert.match(tp.source, /pace-HR fit/);
+  const fb = estimateThresholdPace({ activities: [], actMetrics: {}, lthr: 163, vo2max: 43, today: "2026-11-07" });
+  assert.match(fb.source, /VO2max/);
+  assert.ok(fb.tpSecPerKm > 240 && fb.tpSecPerKm < 340, `fallback ${fb.tpSecPerKm}`);
+  const st = resolveSettings([], [], {}, { tp });
+  assert.equal(st.tpSecPerKm, tp.tpSecPerKm);
 });

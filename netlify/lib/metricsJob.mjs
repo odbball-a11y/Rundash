@@ -1,6 +1,6 @@
 // Runs the metric engine over stored data and caches the results.
 import { store } from "./intervals.mjs";
-import { analyzeActivity, computeAll, resolveSettings, ALGORITHM_VERSION } from "../../src/metrics/index.mjs";
+import { analyzeActivity, computeAll, resolveSettings, estimateThresholdPace, ALGORITHM_VERSION } from "../../src/metrics/index.mjs";
 import { dayKey } from "../../src/metrics/util.mjs";
 
 const settingsKey = (s) => JSON.stringify([s.rest, s.max, s.lthr, s.tpSecPerKm]);
@@ -10,12 +10,13 @@ const settingsKey = (s) => JSON.stringify([s.rest, s.max, s.lthr, s.tpSecPerKm])
 export async function updateActivityMetrics({ budgetMs = 15000 } = {}) {
   const s = store();
   const started = Date.now();
-  const [activities, rawActs, rawWell, overrides, cache, index] = await Promise.all([
+  const [activities, rawActs, rawWell, overrides, cache, index, estimates] = await Promise.all([
     s.get("activities", { type: "json" }), s.get("raw_activities", { type: "json" }),
     s.get("raw_wellness", { type: "json" }), s.get("settings_overrides", { type: "json" }),
     s.get("activity_metrics", { type: "json" }), s.get("detail_index", { type: "json" }),
+    s.get("estimates", { type: "json" }),
   ]);
-  const settings = resolveSettings(rawActs || [], rawWell || [], overrides || {});
+  const settings = resolveSettings(rawActs || [], rawWell || [], overrides || {}, estimates || {});
   const sk = settingsKey(settings);
   const out = cache || {};
   let analysed = 0, pending = 0;
@@ -30,18 +31,27 @@ export async function updateActivityMetrics({ budgetMs = 15000 } = {}) {
     analysed++;
   }
   await s.setJSON("activity_metrics", out);
-  return { analysed, pending, settings };
+
+  // Threshold-pace estimate from the cached pace-HR bins (used when intervals.icu has none).
+  // Changing it changes the settings key, so activities are re-analysed with pace zones next run.
+  const vo2Rows = (rawWell || []).filter((w) => w.vo2max > 0).sort((a, b) => String(a.id).localeCompare(String(b.id)));
+  const tp = estimateThresholdPace({ activities, actMetrics: out, lthr: settings.lthr, vo2max: vo2Rows.length ? vo2Rows[vo2Rows.length - 1].vo2max : null });
+  const prevTp = estimates && estimates.tp && estimates.tp.tpSecPerKm;
+  // Only store a changed estimate when it moved by >= 2 s/km, to avoid re-analysing everything every run.
+  if (tp && (!prevTp || Math.abs(tp.tpSecPerKm - prevTp) >= 2)) await s.setJSON("estimates", { ...(estimates || {}), tp, at: new Date().toISOString() });
+  return { analysed, pending, settings, tp };
 }
 
 // Full computation + cache + append-only daily snapshot (past days never rewritten).
 export async function computeAndStore() {
   const s = store();
-  const [activities, rawActs, rawWell, overrides, actMetrics, snapshots] = await Promise.all([
+  const [activities, rawActs, rawWell, overrides, actMetrics, snapshots, estimates] = await Promise.all([
     s.get("activities", { type: "json" }), s.get("raw_activities", { type: "json" }),
     s.get("raw_wellness", { type: "json" }), s.get("settings_overrides", { type: "json" }),
     s.get("activity_metrics", { type: "json" }), s.get("snapshots", { type: "json" }),
+    s.get("estimates", { type: "json" }),
   ]);
-  const settings = resolveSettings(rawActs || [], rawWell || [], overrides || {});
+  const settings = resolveSettings(rawActs || [], rawWell || [], overrides || {}, estimates || {});
   const result = computeAll({ activities: activities || [], actMetrics: actMetrics || {}, wellness: rawWell || [], settings });
   const sources = Object.values(actMetrics || {}).reduce((m, x) => ((m[x.source] = (m[x.source] || 0) + 1), m), {});
   result.coverage = { activities: (activities || []).length, analysed: Object.keys(actMetrics || {}).length, loadSource: sources };

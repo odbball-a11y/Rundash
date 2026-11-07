@@ -9,7 +9,7 @@ import { efficiencyScore, efficiencyLevel } from "./efficiency.mjs";
 import { runningFitness, racePredictor, trainingEffect, vo2FromRun } from "./fitness.mjs";
 import { loadLevel } from "./load.mjs";
 
-export const ALGORITHM_VERSION = "1.0.0";
+export const ALGORITHM_VERSION = "1.1.0";
 
 export const METHODS = {
   trainingLoad: "est. (TRIMP, calibrated to COROS examples 99/199/295)",
@@ -22,7 +22,7 @@ export const METHODS = {
   recovery: "est. model; exact bands",
   hrZones: "exact COROS default % of LTHR",
   paceZones: "exact COROS default % of threshold pace",
-  thresholds: "source (intervals.icu athlete settings)",
+  thresholds: "source (intervals.icu athlete settings); threshold pace est. from your pace-HR relationship when not set",
   vo2max: "source (Garmin, via intervals.icu wellness); est. fallback",
   runningFitness: "est. (VDOT-equivalent per COROS criterion, 40-100)",
   racePredictor: "est. (independent per distance)",
@@ -33,7 +33,39 @@ export const METHODS = {
 };
 
 // Resolve athlete thresholds from intervals.icu rows (+ optional user overrides).
-export function resolveSettings(rawActivities, wellness, overrides = {}) {
+// Threshold pace (est.) from the pace-HR relationship of steady running in the last 90 days:
+// weighted linear fit of grade-adjusted speed against HR, evaluated at LTHR (COROS describes
+// Running Fitness / zones as based on "the relationship between the heart rate and pace").
+// Fallback: ~88% of VO2max (Daniels threshold) when the fit is not usable.
+export function estimateThresholdPace({ activities, actMetrics, lthr, vo2max, today = dayKey(new Date()) }) {
+  const cutoff = Date.parse(addDays(today, -90));
+  const agg = {};
+  for (const a of activities || []) {
+    if (!/run/i.test(a.sport || "") || Date.parse(a.date) < cutoff) continue;
+    for (const [hr, [sec, vs]] of Object.entries((actMetrics[a.id] || {}).hrSpeedBins || {})) {
+      const e = (agg[hr] ||= [0, 0]); e[0] += sec; e[1] += vs;
+    }
+  }
+  const pts = Object.entries(agg).filter(([, [sec]]) => sec >= 60).map(([hr, [sec, vs]]) => ({ x: +hr + 1, y: vs / sec, w: sec }));
+  const W = pts.reduce((s, p) => s + p.w, 0);
+  if (lthr && pts.length >= 5 && W >= 1800) {
+    const mx = pts.reduce((s, p) => s + p.w * p.x, 0) / W, my = pts.reduce((s, p) => s + p.w * p.y, 0) / W;
+    const sxx = pts.reduce((s, p) => s + p.w * (p.x - mx) ** 2, 0), sxy = pts.reduce((s, p) => s + p.w * (p.x - mx) * (p.y - my), 0);
+    const xs = pts.map((p) => p.x), spread = Math.max(...xs) - Math.min(...xs);
+    if (sxx > 0 && sxy > 0 && spread >= 12) {
+      const v = my + (sxy / sxx) * (lthr - mx);
+      if (v > 2 && v < 6.5) return { tpSecPerKm: round(1000 / v, 1), source: `est. (pace-HR fit, ${pts.length} HR bins, ${Math.round(W / 60)} min of running, 90 days)` };
+    }
+  }
+  if (vo2max) {
+    const target = 0.88 * vo2max; // ml/kg/min at threshold
+    const vMpm = (-0.182258 + Math.sqrt(0.182258 ** 2 + 4 * 0.000104 * (target + 4.6))) / (2 * 0.000104);
+    return { tpSecPerKm: round(1000 / (vMpm / 60), 1), source: "est. (88% of VO2max)" };
+  }
+  return null;
+}
+
+export function resolveSettings(rawActivities, wellness, overrides = {}, estimates = {}) {
   const latest = [...(rawActivities || [])].sort((a, b) => String(b.start_date_local).localeCompare(String(a.start_date_local)));
   const pick = (f, ok = (x) => x > 0) => { for (const a of latest) if (ok(a[f])) return a[f]; return null; };
   const recentRest = median((wellness || []).slice().sort((a, b) => String(b.id).localeCompare(String(a.id))).slice(0, 14).map((w) => w.restingHR).filter((x) => x > 0));
@@ -53,6 +85,7 @@ export function resolveSettings(rawActivities, wellness, overrides = {}) {
   if (!s.max) { s.max = 190; s.sources.max = "default"; }
   if (!s.rest) { s.rest = 55; s.sources.rest = "default"; }
   if (!s.lthr) { s.lthr = Math.round(s.max * 0.89); s.sources.lthr = "est. (89% of max HR)"; }
+  if (!s.tpSecPerKm && estimates.tp) { s.tpSecPerKm = estimates.tp.tpSecPerKm; s.sources.tpSecPerKm = estimates.tp.source; }
   for (const [k, v] of Object.entries(overrides || {})) if (v) { s[k] = v; s.sources[k] = "user"; }
   return s;
 }
