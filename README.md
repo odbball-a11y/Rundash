@@ -77,7 +77,7 @@ localStorage. **Never put the token in `index.html`**, because this repo is publ
 
 ## Live data via intervals.icu (recommended)
 
-Garmin → intervals.icu → Netlify (checks every 5 min) → dashboard (refreshes every minute).
+Garmin → intervals.icu → Netlify (checks every 15 min; Refresh pulls immediately) → dashboard (refreshes every minute).
 Gives runs, HRV, sleep, resting HR and fitness/fatigue/form. No GitHub Actions needed.
 
 1. Free account at https://intervals.icu → **Settings → Connections → Garmin**.
@@ -100,7 +100,7 @@ Endpoints:
 Metric engine: `src/metrics/` (tests: `npm test`). See `docs/coros-research.md` §4 for which
 metrics are exact COROS definitions and which are estimates.
 
-Streams and laps are fetched in the background, up to 8 activities per 5-minute run, newest first.
+Streams and laps are fetched in the background, up to 8 activities per 15-minute run, newest first.
 The old Runalyze/GitHub Actions files in `data/` are only used as a fallback.
 
 ## App
