@@ -30,13 +30,24 @@ export function pctVo2max(hr, rest, max, vo2max = 45) {
   return (hrr * (vo2max - 3.5) + 3.5) / vo2max;
 }
 
+// Intensity anchored on lactate threshold HR (preferred when known): LT sits at ~85% VO2max in
+// recreational runners, so %VO2max ~ LT_FRACTION * (HR - rest) / (LTHR - rest). Less sensitive
+// to an underestimated max HR than the HR-reserve method (v1.3.2: an easy 20-min run at 92% LTHR
+// with max HR 180 scored EPOC 152 - in the range of a 10 km race - with the HR-reserve method).
+export const LT_FRACTION = 0.85;
+export function pctVo2maxLt(hr, rest, lthr) {
+  if (!hr || !rest || !lthr || lthr <= rest) return 0;
+  return clamp(LT_FRACTION * ((hr - rest) / (lthr - rest)), 0, 1.1);
+}
+
 // Per-second EPOC trace -> peak (ml/kg). time in s, hr in bpm. Gaps > 30 s are treated as rest.
-export function epocFromStream(time, hr, { rest, max, vo2max }) {
+export function epocFromStream(time, hr, { rest, max, vo2max, lthr }) {
   let e = 0, peak = 0;
   for (let i = 1; i < time.length; i++) {
     const dt = (time[i] - time[i - 1]) / 60;
     if (!(dt > 0)) continue;
-    const target = dt > 0.5 ? 0 : epocInf(pctVo2max(hr[i], rest, max, vo2max));
+    const f = lthr ? pctVo2maxLt(hr[i], rest, lthr) : pctVo2max(hr[i], rest, max, vo2max);
+    const target = dt > 0.5 ? 0 : epocInf(f);
     const k = target > e ? UP_RATE : DOWN_RATE;
     e = target + (e - target) * Math.exp(-k * dt);
     if (e > peak) peak = e;

@@ -136,7 +136,7 @@ test("computeAll end-to-end on synthetic history", () => {
   }
   const out = computeAll({ activities: acts, actMetrics, wellness: [{ id: "2026-10-30", vo2max: 47, restingHR: 50 }],
     settings: { rest: 50, max: 190, lthr: 168, tpSecPerKm: 270 }, today: "2026-10-31", now: Date.parse("2026-10-31T12:00:00") });
-  assert.equal(out.algorithmVersion, "1.3.1");
+  assert.equal(out.algorithmVersion, "1.3.2");
   assert.ok(out.current.recoveryTime && Array.isArray(out.current.recoveryTime.history));
   assert.ok(out.activities[0].peakEpoc > 0);
   assert.ok(out.current.baseFitness > 0);
@@ -234,6 +234,10 @@ test("EPOC model reproduces Firstbeat Fig. 5 curves and Table 4 typical values",
   const intv = epocFromStream(t, t.map((i) => (Math.floor(i / 180) % 2 ? 120 : 170)), { rest: 50, max: 185, vo2max: 50 });
   assert.ok(intv < cont, `intervals ${intv} < continuous ${cont}`);
   near(pctVo2max(185, 50, 185, 50), 1, 0.001, "max HR = 100% VO2max");
+  // Real case: 20 min at ~148 bpm, rest 44, LTHR 163 should be an ordinary run, not race-like (Table 4: 10k race 120-260)
+  const t20 = Array.from({ length: 1216 }, (_, i) => i);
+  const easy = epocFromStream(t20, t20.map((i) => 135 + Math.min(25, i / 50)), { rest: 44, max: 180, lthr: 163, vo2max: 43 });
+  assert.ok(easy > 30 && easy < 120, `20-min run EPOC ${easy}`);
 });
 
 test("Training Effect from peak EPOC and activity class (Firstbeat Fig. 2)", () => {

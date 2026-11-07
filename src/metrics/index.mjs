@@ -10,7 +10,7 @@ import { runningFitness, racePredictor, trainingEffect, vo2FromRun, vdotFromEffo
 import { loadLevel } from "./load.mjs";
 import { trainingEffectFromEpoc, activityClass, baseRemaining, hoursForTe, sleepModifier, rhrModifier, feelModifier, readiness } from "./epoc.mjs";
 
-export const ALGORITHM_VERSION = "1.3.1";
+export const ALGORITHM_VERSION = "1.3.2";
 
 export const METHODS = {
   trainingLoad: "est. (TRIMP, calibrated to COROS examples 99/199/295)",
@@ -28,7 +28,7 @@ export const METHODS = {
   runningFitness: "est. (VDOT-equivalent per COROS criterion, 40-100)",
   racePredictor: "est. (independent per distance; anchored to your best 3k-half efforts in the last 6 weeks, else 90 days)",
   efficiency: "est. model; exact eligibility and bands",
-  trainingEffect: "aerobic: peak EPOC vs activity class (Firstbeat TE white paper method; EPOC est. from HR); anaerobic: est.; exact scale and labels",
+  trainingEffect: "aerobic: peak EPOC vs activity class (Firstbeat TE white paper method; EPOC est. from HR, intensity anchored on lactate threshold HR); anaerobic: est.; exact scale and labels",
   recoveryTime: "est. (Kemp Fit model: hours from each session's aerobic Training Effect, cumulative, max 96 h, adjusted by sleep, resting HR and your rating vs your own baseline). Not a medical measurement.",
   trainingFocus: "est.",
   personalRecords: "exact (fastest continuous segment incl. pauses)",
@@ -203,8 +203,11 @@ export function computeAll({ activities, actMetrics = {}, wellness = [], setting
     .map((a) => ({ t: Date.parse(a.date) + (a.duration || 0) * 1000, te: amById[a.id].trainingEffect.aerobic, id: a.id }));
   const base = baseRemaining(sessions, now);
   const wl = [...wellness].sort((a, b) => String(b.id).localeCompare(String(a.id)));
-  const recent = wl[0] && daysBetween(String(wl[0].id), today) <= 1 ? wl[0] : null;
-  const prior = (n) => wl.slice(recent ? 1 : 0, (recent ? 1 : 0) + n);
+  // Latest day (today or yesterday) that actually has sleep or resting-HR data - today's row often
+  // exists before last night's sleep has synced.
+  const recent = wl.find((w) => daysBetween(String(w.id), today) <= 1 && (w.sleepSecs || w.restingHR)) || null;
+  const startIdx = recent ? wl.indexOf(recent) + 1 : 0;
+  const prior = (n) => wl.slice(startIdx, startIdx + n);
   const mods = [];
   if (recent) {
     mods.push(...sleepModifier(recent.sleepSecs ? recent.sleepSecs / 60 : null, median(prior(14).map((w) => (w.sleepSecs ? w.sleepSecs / 60 : null))),

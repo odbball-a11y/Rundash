@@ -61,7 +61,7 @@ export function analyzeActivity(summary, detail, settings) {
     }
     out.hrZoneSeconds = hrTimes; out.paceZoneSeconds = paceTimes;
     out.hrSpeedBins = hrSpeedBins(s);
-    out.peakEpoc = epocFromStream(s.time, s.heartrate, { rest, max, vo2max: settings.vo2max || 45 });
+    out.peakEpoc = epocFromStream(s.time, s.heartrate, { rest, max, lthr, vo2max: settings.vo2max || 45 });
     out.focus = trainingFocus(loadByPace);
   } else {
     const l = loadFromAverage(summary.heartRateAvg, summary.duration, rest, max);
