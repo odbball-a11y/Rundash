@@ -67,7 +67,11 @@ export async function sync({ full = false } = {}) {
   ]);
   // Full history until we actually have some, so a sync that ran before
   // Garmin finished importing doesn't leave history permanently missing.
-  const firstRun = full || !oldActs?.length || !oldWell?.length;
+  // Also re-read the whole history once an hour, because Garmin back-fills
+  // older days into intervals.icu long after they happened.
+  const prevMeta = (await s.get("meta", { type: "json" })) || {};
+  const fullDue = !prevMeta.last_full || Date.now() - Date.parse(prevMeta.last_full) > 60 * 60 * 1000;
+  const firstRun = full || fullDue || !oldActs?.length || !oldWell?.length;
   const oldest = firstRun ? "2000-01-01" : daysAgo(14);
   const newest = day(new Date(Date.now() + 86400000));
 
@@ -88,8 +92,9 @@ export async function sync({ full = false } = {}) {
 
   const changed = JSON.stringify([oldActs, oldWell]) !== JSON.stringify([activities, wellness]);
   const now = new Date().toISOString();
-  const meta = (await s.get("meta", { type: "json" })) || {};
+  const meta = prevMeta;
   meta.last_checked = now;
+  if (firstRun) meta.last_full = now;
   if (changed || !meta.last_updated) meta.last_updated = now;
   meta.counts = { activities: activities.length, wellness: wellness.length };
 
