@@ -12,7 +12,10 @@ export default async (req) => {
   const q = new URL(req.url).searchParams;
   if (q.get("snapshots") === "1") return json((await store().get(K.snapshots, { type: "json" })) || {});
   let m = q.get("fresh") === "1" ? null : await store().get(K.latest, { type: "json" });
-  const stale = m && Date.now() - Date.parse(m.generatedAt) > MAX_AGE_MS;
+  // Also stale when a sync has brought in new data since these metrics were computed.
+  const meta = m ? await store().get("meta", { type: "json" }) : null;
+  const stale = m && (Date.now() - Date.parse(m.generatedAt) > MAX_AGE_MS
+    || (meta?.last_updated && Date.parse(meta.last_updated) > Date.parse(m.generatedAt)));
   if (!m || stale) {
     // Keep well inside the ~10 s request limit: analyse what fits, then compute; if that
     // fails, fall back to the previous cached result rather than erroring.
