@@ -18,3 +18,14 @@ export const STATUS_COLOR = {
 };
 export const RECOVERY_COLOR = { Exhausted: "var(--red)", Fatigued: "var(--orange)", Normal: "var(--yellow)", Fresh: "var(--green)" };
 export const ZONE_COLORS = ["#38bdf8", "#22c55e", "#eab308", "#f97316", "#ef4444", "#d946ef"];
+
+// Trailing rolling mean over the previous `n` days of [{date, value}] (oldest first); needs >= half the window.
+export function rollingMean(rows, n = 7) {
+  const out = [];
+  for (let i = 0; i < rows.length; i++) {
+    const t = Date.parse(rows[i].date), from = t - (n - 1) * 86400000;
+    const w = []; for (let j = i; j >= 0 && Date.parse(rows[j].date) >= from; j--) if (rows[j].value != null) w.push(rows[j].value);
+    out.push(w.length >= Math.ceil(n / 2) ? Math.round((w.reduce((a, b) => a + b, 0) / w.length) * 10) / 10 : null);
+  }
+  return out;
+}

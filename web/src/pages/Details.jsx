@@ -1,9 +1,11 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
+import { FEEL_LABELS } from "../../../src/metrics/epoc.mjs";
 import { useAll } from "../api.js";
 import { PageHeader, Card, Loading, ErrorState, Seg, Info, Est, NA, Gauge } from "../components/UI.jsx";
 import { LineChart, BarChart } from "../components/Charts.jsx";
 import * as C from "../components/Cards.jsx";
-import { fmtDate, fmtNum, fmtDur, fmtPace, fmtHours, STATUS_COLOR, RECOVERY_COLOR } from "../format.js";
+import { fmtDate, fmtNum, fmtDur, fmtPace, fmtHours, STATUS_COLOR, RECOVERY_COLOR, rollingMean } from "../format.js";
 
 const RANGES = [["28", "4W"], ["84", "12W"], ["182", "6M"], ["365", "1Y"]];
 function useRange(def = "84") { const [r, setR] = useState(def); return [Number(r), <Seg options={RANGES} value={r} onChange={setR} />]; }
@@ -66,28 +68,128 @@ export function TrainingLoadDetail() {
 }
 
 export function RecoveryDetail() {
-  return <Wrap title="Recovery">{({ m }) => {
-    const r = m.current?.recovery || {};
-    return <div className="stack">
-      <Card title="Current recovery">
-        <div className="row" style={{ flexWrap: "wrap" }}>
-          <Gauge value={r.pct} color={RECOVERY_COLOR[r.state]} size={170} sub="%" />
-          <div>
-            <div style={{ fontSize: 24, fontWeight: 700, color: RECOVERY_COLOR[r.state] }}>{r.state}</div>
-            <div className="muted">{r.advice}</div>
-            <div style={{ marginTop: 8 }}>{r.hoursToFull ? `About ${r.hoursToFull} hours to full recovery` : "Fully recovered"}<Est /></div>
-          </div>
-        </div>
-      </Card>
-      <Card title="What the levels mean">
-        <table className="tbl"><tbody>
-          {[["90–100%", "Fresh", "Ready for hard training"], ["70–89%", "Normal", "Ready for easy or moderate training"], ["20–69%", "Fatigued", "Easy running only"], ["0–19%", "Exhausted", "Rest"]].map(([p, s, t]) =>
-            <tr key={s}><td className="num">{p}</td><td style={{ color: RECOVERY_COLOR[s], fontWeight: 600 }}>{s}</td><td className="muted">{t}</td></tr>)}
-        </tbody></table>
-        <p className="lbl">Based on your recent Training Load and Base Fitness. Sleep, HRV and muscle soreness aren't included, so listen to your body.</p>
-      </Card>
-    </div>;
-  }}</Wrap>;
+  return <Wrap title="Recovery">{({ m, data }) => <RecoveryBody m={m} data={data} />}</Wrap>;
+}
+
+function FitCard({ fit, acts }) {
+  if (!fit) return null;
+  const cal = fit.calibration || {};
+  const better = fit.corrWithRhr.coros == null || fit.corrWithRhr.kempfit == null ? null
+    : Math.abs(fit.corrWithRhr.coros - fit.corrWithRhr.kempfit) < 0.03 ? "about the same" : fit.corrWithRhr.coros > fit.corrWithRhr.kempfit ? "COROS method" : "Kemp Fit method";
+  const pm = (v) => (v == null ? "—" : `${v > 0 ? "+" : ""}${v} bpm`);
+  return (
+    <Card title="How well does each method fit you?" className="span2" info={<Info title="How well does each method fit you?">
+      <p>Checks each method against your body's response: how far your resting heart rate rose above your 14-day normal the morning after each run. A method that fits well predicts more remaining recovery on the mornings your resting heart rate is raised.</p>
+      <p>The Kemp Fit hours are scaled to fit this, blended with a starting value (×{cal.prior}) according to how much evidence there is. It updates automatically as new runs come in.</p>
+      <p>Resting heart rate is a noisy signal (sleep, stress, illness and alcohol move it too), so treat this as an indication, not proof. HRV would be better, but your watch doesn't record it.</p>
+    </Info>}>
+      <div className="scrollx"><table className="tbl num">
+        <thead><tr><th></th><th>COROS method</th><th>Kemp Fit method</th></tr></thead>
+        <tbody>
+          <tr><td>Typical recovery per run</td><td>{fit.medianHours.coros} h</td><td>{fit.medianHours.kempfit} h</td></tr>
+          <tr><td>Fit with next-morning resting HR <span className="lbl">(correlation)</span></td><td>{fit.corrWithRhr.coros ?? "—"}</td><td>{fit.corrWithRhr.kempfit ?? "—"}</td></tr>
+          <tr><td>Resting HR after runs it rated lightest</td><td>{pm(fit.rhrAfter.coros?.lightest)}</td><td>{pm(fit.rhrAfter.kempfit?.lightest)}</td></tr>
+          <tr><td>Resting HR after runs it rated heaviest</td><td>{pm(fit.rhrAfter.coros?.heaviest)}</td><td>{pm(fit.rhrAfter.kempfit?.heaviest)}</td></tr>
+          <tr><td>Range across your 12 heaviest sessions</td><td>{fit.heavySpread.coros ? `${fit.heavySpread.coros.min}–${fit.heavySpread.coros.max} h` : "—"}</td><td>{fit.heavySpread.kempfit ? `${fit.heavySpread.kempfit.min}–${fit.heavySpread.kempfit.max} h` : "—"}</td></tr>
+        </tbody>
+      </table></div>
+      <p className="lbl" style={{ marginTop: 8 }}>Based on {fit.n} runs with a resting heart rate the next morning. Best fit so far: <b style={{ color: "var(--text)" }}>{better || "not enough data"}</b>. Kemp Fit scale ×{cal.scale}{cal.fitted != null ? ` (your data suggests ×${cal.fitted}, weight ${Math.round((cal.weight || 0) * 100)}%)` : ""}.</p>
+      <div className="month">Your heaviest sessions</div>
+      <div className="scrollx"><table className="tbl num">
+        <thead><tr><th>Date</th><th>Run</th><th>km</th><th>min</th><th>Load</th><th>COROS</th><th>Kemp Fit</th><th>RHR next morning</th></tr></thead>
+        <tbody>{fit.heaviest.map((h) => <tr key={h.id}>
+          <td>{fmtDate(h.date, { day: "2-digit", month: "short", year: "2-digit" })}</td>
+          <td><Link to={`/activities/${h.id}`} style={{ color: "var(--cyan)" }}>{acts[h.id]?.title || "Run"}</Link></td>
+          <td>{fmtNum(h.km, 1)}</td><td>{h.minutes}</td><td>{h.load}</td><td>{h.coros} h</td><td>{h.kempfit} h</td><td>{pm(h.rhrRise == null ? null : Math.round(h.rhrRise))}</td>
+        </tr>)}</tbody>
+      </table></div>
+    </Card>
+  );
+}
+
+function RecoveryBody({ m, data }) {
+  const [method, setMethod] = C.useRecoveryMethod();
+  const co = m.current?.recovery, kf = m.current?.recoveryTime;
+  if (!co && !kf) return <Card><div className="na">Needs runs with heart rate</div></Card>;
+  const acts = Object.fromEntries((data?.activities || []).map((a) => [a.id, a]));
+  const recent = (m.activities || []).filter((a) => a.load).slice(-8).reverse();
+  const sig = kf?.signals || {};
+  const hist = (co?.history || []).map((h, i) => ({ date: h.date, co: h.hours, kf: kf?.history?.[i]?.hours ?? null }));
+  const trainingDiff = kf && co ? kf.baseHours - co.hoursToFull : 0;
+  return <div className="grid">
+    <div className="span2"><C.RecoveryCard m={m} to={null} /></div>
+    <Card title="Why the two methods differ">
+      <table className="tbl"><tbody>
+        <tr><td>COROS method <div className="lbl">Training Load ÷ Base Fitness</div></td><td className="num" style={{ textAlign: "right", fontWeight: 600 }}>{co?.hoursToFull ?? "—"} h</td></tr>
+        <tr><td>Kemp Fit, from training <div className="lbl">EPOC → Training Effect{kf?.lastSession ? ` (last run TE ${kf.lastSession.te})` : ""}</div></td><td className="num" style={{ textAlign: "right", fontWeight: 600 }}>{kf?.baseHours ?? "—"} h</td></tr>
+        {(kf?.modifiers || []).map((x) => <tr key={x.key}><td>{x.label}<div className="lbl">{x.detail}</div></td><td className="num" style={{ textAlign: "right", fontWeight: 600, color: x.hours > 0 ? "var(--orange)" : "var(--green)" }}>{x.hours > 0 ? "+" : ""}{x.hours} h</td></tr>)}
+        <tr><td><b>Kemp Fit method</b></td><td className="num" style={{ textAlign: "right", fontWeight: 700 }}>{kf?.hours ?? "—"} h</td></tr>
+      </tbody></table>
+      <p className="lbl">{Math.abs(trainingDiff) >= 4 ? (trainingDiff > 0
+        ? "Kemp Fit rates your recent runs as harder than the COROS method does: time near or above threshold heart rate builds EPOC quickly."
+        : "Kemp Fit rates your recent runs as easier than the COROS method does: steady running below threshold builds little EPOC.")
+        : "From training alone, the two methods agree closely."} Today's signals: sleep {sig.sleepMin ? `${Math.floor(sig.sleepMin / 60)}h ${String(sig.sleepMin % 60).padStart(2, "0")}m` : "—"}{sig.sleepScore != null ? ` (score ${sig.sleepScore})` : ""} · resting HR {sig.restingHR ?? "—"} bpm.</p>
+      {kf?.ignoredModifiers?.length > 0 && <p className="lbl">Already recovered from training, so these didn't shorten it further: {kf.ignoredModifiers.map((x) => x.label.toLowerCase()).join(", ")}.</p>}
+    </Card>
+    <Card title="Hours till full recovery at 7am (14 days)">
+      <BarChart legend labels={hist.map((h) => fmtDate(h.date, { weekday: "narrow", day: "numeric" }))} series={[
+        { label: "COROS method", data: hist.map((h) => h.co), color: method === "coros" ? "#22d3ee" : "#22d3ee77" },
+        { label: "Kemp Fit (training)", data: hist.map((h) => h.kf), color: method === "kempfit" ? "#f97316" : "#f9731677" },
+      ]} />
+    </Card>
+    <Card title="Recent sessions" className="span2">
+      <div className="scrollx"><table className="tbl num">
+        <thead><tr><th>Date</th><th>Run</th><th>Training Load</th><th>COROS adds</th><th>Peak EPOC</th><th>Aerobic TE</th><th>Kemp Fit adds</th><th>Felt</th></tr></thead>
+        <tbody>{recent.map((a) => <tr key={a.id}>
+          <td>{fmtDate(a.date)}</td>
+          <td><Link to={`/activities/${a.id}`} style={{ color: "var(--cyan)" }}>{acts[a.id]?.title || "Run"}</Link></td>
+          <td>{a.load}</td><td>{a.corosRecoveryHours != null ? `${a.corosRecoveryHours} h` : "—"}</td>
+          <td>{a.peakEpoc ?? "—"}</td><td>{a.trainingEffect?.aerobic ?? "—"} <span className="lbl">{a.trainingEffect?.aerobicLabel}</span></td>
+          <td>{a.recoveryHours != null ? `${a.recoveryHours} h` : "—"}</td><td>{a.feel ? FEEL_LABELS[a.feel] : <Link to={`/activities/${a.id}`} className="lbl">rate</Link>}</td>
+        </tr>)}</tbody>
+      </table></div>
+    </Card>
+    <FitCard fit={m.current?.recoveryFit} acts={acts} />
+    <Card title="How each method works" className="span2">
+      <p className="muted"><b>COROS method.</b> Uses the inputs COROS describes: your Training Load, Base Fitness and the time since your last run. Each run adds recovery time in proportion to its load compared with your fitness; it counts down to 0, capped at 96 h. The % is calibrated to COROS's own example (64% with 33 h left). COROS doesn't use sleep or HRV for this.</p>
+      <p className="muted"><b>Kemp Fit method.</b> Each run's heart rate is converted to effort relative to your threshold and accumulated into EPOC (exercise "after-burn"), following Firstbeat's published model. Peak EPOC compared with how much you usually train (activity class {kf?.activityClass ?? "—"}) gives the aerobic Training Effect, which sets the hours (before scaling: TE 1 ≈ 2 h, 2 ≈ 6 h, 3 ≈ 14 h, 4 ≈ 28 h, 5 ≈ 54 h, and still rising beyond TE 5). Those hours are then scaled (×{kf?.calibration?.scale ?? "—"}) to fit how your own resting heart rate has responded the morning after your runs. Shorter sleep or a resting heart rate above your 30-day normal add time; good sleep, a low resting heart rate and feeling good take time off. Same % scale and levels as the COROS method.</p>
+      <p className="lbl">Both are estimates. Neither COROS, Garmin nor Firstbeat publish their recovery formulas, and neither method can tell whether muscles, tendons or your nervous system have fully recovered.</p>
+    </Card>
+  </div>;
+}
+
+const WEEK_RANGES = [["84", "12W"], ["182", "6M"], ["365", "1Y"]];
+function useWeekRange() { const [r, setR] = useState("182"); return [Number(r), <Seg options={WEEK_RANGES} value={r} onChange={setR} />]; }
+const sinceDays = (rows, days) => { const cut = Date.now() - days * 864e5; return rows.filter((r) => Date.parse(r.date) >= cut); };
+const fmtRace = (s) => { if (s == null) return "—"; s = Math.round(s); const h = Math.floor(s / 3600), mm = Math.floor((s % 3600) / 60), ss = s % 60; return h ? `${h}:${String(mm).padStart(2, "0")}:${String(ss).padStart(2, "0")}` : `${mm}:${String(ss).padStart(2, "0")}`; };
+
+function RunningFitnessTrend({ m }) {
+  const [scale] = C.useRfScale();
+  const [days, seg] = useWeekRange();
+  const [show, setShow] = useState("overall");
+  const rows = sinceDays(m.current?.runningFitness?.history || [], days);
+  const labels = rows.map((r) => fmtDate(r.date));
+  const ab = (k) => rows.map((r) => r.abilities?.[scale]?.[k] ?? null);
+  const series = show === "overall"
+    ? [{ label: "Running Fitness", data: rows.map((r) => r.score?.[scale] ?? null), color: "#22d3ee", fill: true, width: 2.5 }]
+    : [
+        { label: "Base", data: ab("base"), color: "#34d399" },
+        { label: "Endurance", data: ab("endurance"), color: "#facc15" },
+        { label: "Speed", data: ab("speed"), color: "#f97316" },
+        { label: "Sprint", data: ab("sprint"), color: "#f87171" },
+      ];
+  const vals = series.flatMap((s) => s.data).filter((v) => v != null);
+  const first = rows.find((r) => r.score?.[scale] != null), last = rows[rows.length - 1];
+  const change = first && last?.score?.[scale] != null ? Math.round((last.score[scale] - first.score[scale]) * 10) / 10 : null;
+  return <Card title="Running Fitness over time" right={<span style={{ marginLeft: "auto" }}>{seg}</span>}>
+    <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+      <Seg options={[["overall", "Overall"], ["abilities", "Abilities"]]} value={show} onChange={setShow} />
+      {change != null && <span className="lbl">Change: <b style={{ color: change >= 0 ? "var(--green)" : "var(--orange)" }}>{change > 0 ? "+" : ""}{change}</b></span>}
+    </div>
+    {rows.length < 2 ? <NA>Not enough history yet</NA> : <LineChart height="lg" legend={show !== "overall"} labels={labels} series={series}
+      yMin={vals.length ? Math.max(0, Math.floor(Math.min(...vals) / 5) * 5 - 5) : undefined} yMax={vals.length ? Math.min(100, Math.ceil(Math.max(...vals) / 5) * 5 + 5) : undefined} />}
+    <p className="lbl">One point per week, each worked out from the 6 weeks of running before it (same method as today's score, {scale} scale).<Est /></p>
+  </Card>;
 }
 
 export function RunningFitnessDetail() {
@@ -95,6 +197,7 @@ export function RunningFitnessDetail() {
     const c = m.current || {};
     return <div className="grid">
       <div className="span2"><C.RunningFitnessCard m={m} to={null} /></div>
+      <div className="span2"><RunningFitnessTrend m={m} /></div>
       <Card title="How to improve each ability">
         <table className="tbl"><tbody>
           <tr><td><b>Base</b></td><td className="muted">Long continuous runs (1–2 h) in Aerobic Endurance</td></tr>
@@ -113,6 +216,7 @@ export function RacePredictorDetail() {
   return <Wrap title="Race Predictor">{({ m }) => (
     <div className="stack">
       <C.RacePredictorCard m={m} to={null} />
+      <RacePredictorTrend m={m} />
       <Card title="About these predictions">
         <p className="muted">Estimates assume a flat course in good weather. They come from your last 6 weeks of running (90 days if there isn't enough), anchored to your actual best efforts{m.current?.performanceVdot ? ` (running fitness ${fmtNum(m.current.performanceVdot, 1)})` : ""}. The marathon time includes a penalty while your longest recent run is under 25 km.<Est /></p>
       </Card>
@@ -120,14 +224,55 @@ export function RacePredictorDetail() {
   )}</Wrap>;
 }
 
+function RacePredictorTrend({ m }) {
+  const [days, seg] = useWeekRange();
+  const [dist, setDist] = useState("5k");
+  const rows = sinceDays(m.current?.runningFitness?.history || [], days);
+  const data = rows.map((r) => r.predictor?.[dist] ?? null);
+  const known = data.filter((v) => v != null);
+  const change = known.length > 1 ? known[known.length - 1] - known[0] : null;
+  return <Card title="Predicted times over time" right={<span style={{ marginLeft: "auto" }}>{seg}</span>}>
+    <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+      <Seg options={[["5k", "5K"], ["10k", "10K"], ["half", "Half"], ["marathon", "Marathon"]]} value={dist} onChange={setDist} />
+      {change != null && Math.abs(change) >= 1 && <span className="lbl">{change < 0 ? "Faster" : "Slower"} by <b style={{ color: change < 0 ? "var(--green)" : "var(--orange)" }}>{fmtRace(Math.abs(change))}</b></span>}
+    </div>
+    {known.length < 2 ? <NA>Not enough history yet</NA> : <LineChart height="lg" labels={rows.map((r) => fmtDate(r.date))} reverseY yFmt={fmtRace}
+      series={[{ label: "Predicted", data, color: "#a78bfa", width: 2.5 }]} />}
+    <p className="lbl">One point per week from the 6 weeks of running before it. Faster times are higher on the chart.<Est /></p>
+  </Card>;
+}
+
 export function RestingHrDetail() {
   const [days, seg] = useRange();
   return <Wrap title="Resting Heart Rate">{({ data }) => {
-    const rows = (data.restHR || []).slice(0, days).reverse();
-    return <Card title="Resting heart rate" right={<span style={{ marginLeft: "auto" }}>{seg}</span>}>
-      {!rows.length ? <NA>No data</NA> : <LineChart height="lg" labels={rows.map((r) => fmtDate(r.date))} series={[{ label: "RHR (bpm)", data: rows.map((r) => r.value), color: "#f87171", fill: true }]} />}
-      <p className="lbl">A resting heart rate several beats above your normal can mean fatigue, stress or illness.</p>
-    </Card>;
+    const all = (data.restHR || []).slice().reverse();              // oldest first
+    // Smoothing window grows with the range so long views show the trend, not week-to-week noise.
+    const win = days >= 365 ? 28 : days >= 182 ? 21 : days >= 84 ? 14 : 7;
+    const avg7 = rollingMean(all, 7);
+    const avgAll = win === 7 ? avg7 : rollingMean(all, win);         // full history so a range never starts blank
+    const cut = all.length - Math.min(days, all.length);
+    const rows = all.slice(cut), avg = avgAll.slice(cut);
+    const vals = (arr) => arr.filter((x) => x != null);
+    const last7 = avg7[avg7.length - 1];
+    const normal30 = (() => { const v = vals(all.slice(-30).map((r) => r.value)).sort((a, b) => a - b); return v.length ? v[Math.floor(v.length / 2)] : null; })();
+    const ago = avg7[avg7.length - 1 - 90];
+    const trend = last7 != null && ago != null ? Math.round((last7 - ago) * 10) / 10 : null;
+    return <div className="stack">
+      <Card title="Summary">
+        <div className="trio num" style={{ marginTop: 0 }}>
+          <div><div className="v">{fmtNum(last7, 1)}</div><div className="lbl">7-day average</div></div>
+          <div><div className="v">{normal30 ?? "—"}</div><div className="lbl">30-day normal</div></div>
+          <div><div className="v" style={{ color: trend == null ? undefined : trend <= 0 ? "var(--green)" : "var(--orange)" }}>{trend == null ? "—" : `${trend > 0 ? "+" : ""}${trend}`}</div><div className="lbl">vs 3 months ago</div></div>
+        </div>
+      </Card>
+      <Card title="Resting heart rate" right={<span style={{ marginLeft: "auto" }}>{seg}</span>}>
+        {!rows.length ? <NA>No data</NA> : <LineChart height="lg" legend labels={rows.map((r) => fmtDate(r.date))} series={[
+          { label: `${win}-day average`, data: avg, color: "#f87171", fill: true, width: 2.5 },
+          { label: "Daily", data: rows.map((r) => r.value), color: "#f8717155", width: 1 },
+        ]} />}
+        <p className="lbl">The bold line is your {win}-day average (longer ranges use a longer average); daily readings are shown faintly behind it. A 7-day average several beats above your normal can mean fatigue, stress or illness; a slow fall over months usually means improving aerobic fitness.</p>
+      </Card>
+    </div>;
   }}</Wrap>;
 }
 
@@ -153,3 +298,4 @@ export function SleepDetail() {
 export function Vo2Detail() {
   return <Wrap title="VO₂max">{({ m, data }) => <C.VO2Card m={m} data={data} to={null} />}</Wrap>;
 }
+

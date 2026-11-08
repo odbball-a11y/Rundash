@@ -1,9 +1,16 @@
 // Runs the metric engine over stored data and caches the results.
+import { getStore } from "@netlify/blobs";
 import { store } from "./intervals.mjs";
 import { analyzeActivity, computeAll, resolveSettings, estimateThresholdPace, ALGORITHM_VERSION } from "../../src/metrics/index.mjs";
 import { dayKey } from "../../src/metrics/util.mjs";
 
 const settingsKey = (s) => JSON.stringify([s.rest, s.max, s.lthr, s.tpSecPerKm]);
+
+// Cached results are stored per engine version, so an older deployment (e.g. production
+// while new code runs on a branch deploy) never overwrites this version's results and the
+// two don't keep re-analysing each other's cache.
+const V = ALGORITHM_VERSION.split(".").slice(0, 2).join(".");
+export const K = { actMetrics: `activity_metrics@${V}`, latest: `metrics_latest@${V}`, snapshots: `snapshots@${V}`, estimates: `estimates@${V}` };
 
 // Per-activity analysis (streams -> load, zones, best efforts, focus), cached by
 // algorithm version + thresholds so it is only redone when something changes.
@@ -13,8 +20,8 @@ export async function updateActivityMetrics({ budgetMs = 15000 } = {}) {
   const [activities, rawActs, rawWell, overrides, cache, index, estimates] = await Promise.all([
     s.get("activities", { type: "json" }), s.get("raw_activities", { type: "json" }),
     s.get("raw_wellness", { type: "json" }), s.get("settings_overrides", { type: "json" }),
-    s.get("activity_metrics", { type: "json" }), s.get("detail_index", { type: "json" }),
-    s.get("estimates", { type: "json" }),
+    s.get(K.actMetrics, { type: "json" }), s.get("detail_index", { type: "json" }),
+    s.get(K.estimates, { type: "json" }),
   ]);
   const settings = resolveSettings(rawActs || [], rawWell || [], overrides || {}, estimates || {});
   const sk = settingsKey(settings);
@@ -30,7 +37,7 @@ export async function updateActivityMetrics({ budgetMs = 15000 } = {}) {
     out[a.id] = { ...analyzeActivity(a, detail, settings), v: ALGORITHM_VERSION, sk };
     analysed++;
   }
-  await s.setJSON("activity_metrics", out);
+  await s.setJSON(K.actMetrics, out);
 
   // Threshold-pace estimate from the cached pace-HR bins (used when intervals.icu has none).
   // Changing it changes the settings key, so activities are re-analysed with pace zones next run.
@@ -38,7 +45,7 @@ export async function updateActivityMetrics({ budgetMs = 15000 } = {}) {
   const tp = estimateThresholdPace({ activities, actMetrics: out, lthr: settings.lthr, vo2max: vo2Rows.length ? vo2Rows[vo2Rows.length - 1].vo2max : null });
   const prevTp = estimates && estimates.tp && estimates.tp.tpSecPerKm;
   // Only store a changed estimate when it moved by >= 2 s/km, to avoid re-analysing everything every run.
-  if (tp && (!prevTp || Math.abs(tp.tpSecPerKm - prevTp) >= 2)) await s.setJSON("estimates", { ...(estimates || {}), tp, at: new Date().toISOString() });
+  if (tp && (!prevTp || Math.abs(tp.tpSecPerKm - prevTp) >= 2)) await s.setJSON(K.estimates, { ...(estimates || {}), tp, at: new Date().toISOString() });
   return { analysed, pending, settings, tp };
 }
 
@@ -48,18 +55,19 @@ export async function computeAndStore() {
   const [activities, rawActs, rawWell, overrides, actMetrics, snapshots, estimates] = await Promise.all([
     s.get("activities", { type: "json" }), s.get("raw_activities", { type: "json" }),
     s.get("raw_wellness", { type: "json" }), s.get("settings_overrides", { type: "json" }),
-    s.get("activity_metrics", { type: "json" }), s.get("snapshots", { type: "json" }),
-    s.get("estimates", { type: "json" }),
+    s.get(K.actMetrics, { type: "json" }), s.get(K.snapshots, { type: "json" }),
+    s.get(K.estimates, { type: "json" }),
   ]);
   const settings = resolveSettings(rawActs || [], rawWell || [], overrides || {}, estimates || {});
-  const result = computeAll({ activities: activities || [], actMetrics: actMetrics || {}, wellness: rawWell || [], settings });
+  const feels = (await getStore({ name: "user", consistency: "strong" }).get("feel", { type: "json" })) || {};
+  const result = computeAll({ activities: activities || [], actMetrics: actMetrics || {}, wellness: rawWell || [], settings, feels });
   const sources = Object.values(actMetrics || {}).reduce((m, x) => ((m[x.source] = (m[x.source] || 0) + 1), m), {});
   result.coverage = { activities: (activities || []).length, analysed: Object.keys(actMetrics || {}).length, loadSource: sources };
-  await s.setJSON("metrics_latest", result);
+  await s.setJSON(K.latest, result);
 
   const snaps = snapshots || {};
   const today = dayKey(new Date());
   snaps[today] = { ...result.current, algorithmVersion: result.algorithmVersion, at: result.generatedAt };
-  await s.setJSON("snapshots", snaps);
+  await s.setJSON(K.snapshots, snaps);
   return result;
 }

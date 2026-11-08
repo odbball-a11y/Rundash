@@ -19,7 +19,11 @@ const daysAgo = (n) => day(new Date(Date.now() - n * 86400000));
 function credentials() {
   const athlete = (env("INTERVALS_ATHLETE_ID") || "").trim();
   const key = (env("INTERVALS_API_KEY") || "").trim();
-  if (!athlete || !key) throw new Error("Set INTERVALS_ATHLETE_ID and INTERVALS_API_KEY in Netlify environment variables.");
+  if (!athlete || !key) {
+    const missing = [!athlete && "INTERVALS_ATHLETE_ID", !key && "INTERVALS_API_KEY"].filter(Boolean).join(" and ");
+    const ctx = env("CONTEXT") || "this deploy";
+    throw new Error(`${missing} not available to ${ctx}. In Netlify, give it a value for "${ctx}" (or "Same value for all deploy contexts"), then redeploy.`);
+  }
   return { athlete, key };
 }
 
@@ -37,6 +41,21 @@ export async function apiGet(path, params) {
     throw err;
   }
   return resp.json();
+}
+
+export const athleteId = () => credentials().athlete;
+
+// POST / PUT / DELETE to intervals.icu (planned workouts and events).
+export async function apiSend(method, path, body) {
+  const { key } = credentials();
+  const resp = await fetch(`${API}${path}`, {
+    method,
+    headers: { authorization: "Basic " + btoa(`API_KEY:${key}`), accept: "application/json", "content-type": "application/json" },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (!resp.ok) throw new Error(`intervals.icu ${method} ${path} -> ${resp.status} ${(await resp.text()).slice(0, 200)}`);
+  const t = await resp.text();
+  return t ? JSON.parse(t) : {};
 }
 
 // GET a path under the configured athlete.

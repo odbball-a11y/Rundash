@@ -42,8 +42,11 @@ export async function syncDetails({ budgetMs = 12000, max = 8 } = {}) {
   const todo = activities.filter((a) => {
     const e = index[a.id];
     if (!e) return true;
-    // Retry failures at most once a day.
-    return e.status !== "ok" && Date.now() - Date.parse(e.at) > 86400000;
+    if (e.status === "ok") return false;
+    // Runs from the last 3 days may still be processing on intervals.icu: retry after 10 min.
+    // Older failures: at most once a day.
+    const recent = Date.now() - Date.parse(a.date) < 3 * 86400000;
+    return Date.now() - Date.parse(e.at) > (recent ? 600000 : 86400000);
   });
   let done = 0;
   for (const a of todo) {

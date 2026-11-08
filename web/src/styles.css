@@ -49,6 +49,7 @@ button { font: inherit; color: inherit; }
 @media (min-width: 640px) { .grid { grid-template-columns: repeat(2, 1fr); } }
 @media (min-width: 1100px) { .grid.g3 { grid-template-columns: repeat(3, 1fr); } .grid.g4 { grid-template-columns: repeat(4, 1fr); } }
 .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; min-width: 0; }
+a.card { display: block; }
 a.card:hover, .card.link:hover { border-color: var(--text-3); }
 .card .ch { display: flex; align-items: center; gap: 6px; margin-bottom: 12px; color: var(--text); font-weight: 600; font-size: 14px; }
 .card .ch .chev { margin-left: auto; color: var(--text-3); }

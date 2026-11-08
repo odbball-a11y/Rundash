@@ -1,6 +1,7 @@
-import { Card, Info, Gauge, Bar, Badge, Est, NA, Icon } from "./UI.jsx";
+import { useEffect, useState } from "react";
+import { Card, Info, Gauge, Bar, Badge, Est, NA, Icon, Seg } from "./UI.jsx";
 import { LineChart, BarChart } from "./Charts.jsx";
-import { fmtDur, fmtPace, fmtKm, fmtHours, fmtDate, fmtNum, STATUS_COLOR, RECOVERY_COLOR, ZONE_COLORS } from "../format.js";
+import { fmtDur, fmtPace, fmtKm, fmtHours, fmtDate, fmtNum, STATUS_COLOR, RECOVERY_COLOR, ZONE_COLORS, rollingMean } from "../format.js";
 import { Link } from "react-router-dom";
 
 const M = (m, k) => m?.methods?.[k];
@@ -19,6 +20,7 @@ export function TrainingStatusCard({ m, to = "/progress/training-status" }) {
         <div><div className="v">{fmtNum(c.baseFitness)}</div><div className="lbl">Base Fitness</div></div>
         <div><div className="v">{c.intensityTrend ?? "—"}%</div><div className="lbl">Intensity Trend</div></div>
       </div>
+      <WeekStatusStrip series={m?.series} />
     </Card>
   );
 }
@@ -43,25 +45,6 @@ export function TrainingLoadCard({ m, to = "/progress/training-load" }) {
   );
 }
 
-export function RecoveryCard({ m, to = "/progress/recovery" }) {
-  const r = m?.current?.recovery;
-  return (
-    <Card title="Recovery" to={to} info={<Info title="Recovery" method={M(m, "recovery")}>
-      <p>How recovered you are from recent training, based on your recent load and Base Fitness. It rises quickly at first and slows near 100%. Sleep and HRV are not part of it.</p>
-      <p>0–19% Exhausted · 20–69% Fatigued · 70–89% Normal · 90–100% Fresh. The timer is capped at 96 hours.</p>
-    </Info>}>
-      <div className="row">
-        <Gauge value={r?.pct} color={RECOVERY_COLOR[r?.state]} size={120} sub="%" />
-        <div>
-          <div style={{ color: RECOVERY_COLOR[r?.state], fontWeight: 700, fontSize: 18 }}>{r?.state || "—"}</div>
-          <div className="lbl">{r?.advice}</div>
-          <div className="lbl" style={{ marginTop: 6 }}>{r?.hoursToFull ? `Full recovery in ~${r.hoursToFull} h` : "Fully recovered"}<Est /></div>
-        </div>
-      </div>
-    </Card>
-  );
-}
-
 export function abilityBands(m) {
   const pz = m?.zones?.pace;
   if (!pz) return {};
@@ -70,26 +53,41 @@ export function abilityBands(m) {
   return { base: rng(z(2)), endurance: rng(z(4)), speed: rng(z(5)), sprint: `< ${fmtPace((z(6) || {}).slowSec)}` };
 }
 
+// Which column of COROS's Running Fitness table to use (it has male and female marathon anchors).
+const RF_KEY = "kf_rf_scale";
+export function useRfScale() {
+  const read = () => { try { return localStorage.getItem(RF_KEY) || "male"; } catch { return "male"; } };
+  const [v, setV] = useState(read);
+  useEffect(() => { const on = () => setV(read()); window.addEventListener("kf-rf-scale", on); return () => window.removeEventListener("kf-rf-scale", on); }, []);
+  const set = (x) => { try { localStorage.setItem(RF_KEY, x); } catch {} setV(x); window.dispatchEvent(new Event("kf-rf-scale")); };
+  return [v, set];
+}
+
 export function RunningFitnessCard({ m, to = "/progress/running-fitness" }) {
+  const [scale] = useRfScale();
   const rf = m?.current?.runningFitness;
+  const score = rf?.scoreBySex?.[scale] ?? rf?.score;
+  const ab = rf?.abilitiesBySex?.[scale] ?? rf?.abilities;
   const bands = abilityBands(m);
   const rows = [["Base", "base", "> 30 km"], ["Endurance", "endurance", "~10 km"], ["Speed", "speed", "~3 km"], ["Sprint", "sprint", "~400 m"]];
   return (
     <Card title="Running Fitness" to={to} info={<Info title="Running Fitness" method={M(m, "runningFitness")}>
-      <p>Your running ability on a 40–100 scale, from the last 6 weeks, with four abilities: Base (long aerobic), Endurance (threshold), Speed (VO₂max) and Sprint (30–60 s). The pace beside each ability is the zone to train in to improve it.</p>
+      <p>Your running ability on COROS's 40–100 scale. The overall score reflects your predicted marathon, using COROS's reference table (for example 95 ≈ 2:45, 85 ≈ 3:30, 75 ≈ 4:00, 60 ≈ 6:00 on the male scale). Each ability is scored the same way from its own measure: Base (long aerobic), Endurance (threshold pace), Speed (VO₂max / best efforts) and Sprint (best 30–60 s), from the last 6 weeks.</p>
+      <p>The pace beside each ability is the zone to train in to improve it. Scale in use: {scale === "female" ? "female" : "male"} (change in Profile → Heart rate & pace zones).</p>
     </Info>}>
       <div className="row" style={{ alignItems: "flex-start" }}>
-        <Gauge value={rf?.score} min={40} max={100} color="var(--orange)" size={120} sub={<tspan>score</tspan>} />
+        <Gauge value={score} min={40} max={100} color="var(--orange)" size={120} sub={<tspan>score</tspan>} />
         <div style={{ flex: 1, minWidth: 0 }} className="stack">
           {rows.map(([name, k, dist]) => (
             <div key={k}>
-              <div className="row between lbl"><span><b style={{ color: "var(--text)" }}>{name}</b> {dist}</span><span className="num" style={{ color: "var(--text)" }}>{fmtNum(rf?.abilities?.[k], 1)}</span></div>
-              <Bar value={(rf?.abilities?.[k] || 40) - 40} max={60} color="var(--orange)" />
+              <div className="row between lbl"><span><b style={{ color: "var(--text)" }}>{name}</b> {dist}</span><span className="num" style={{ color: "var(--text)" }}>{fmtNum(ab?.[k], 1)}</span></div>
+              <Bar value={(ab?.[k] || 40) - 40} max={60} color="var(--orange)" />
               <div className="lbl num" style={{ fontSize: 11 }}>{bands[k] ? `${bands[k]} /km` : ""}</div>
             </div>
           ))}
         </div>
       </div>
+      <div className="lbl" style={{ marginTop: 6 }}>COROS {scale} scale{m?.current?.racePredictor?.marathon ? ` · predicted marathon ${fmtDur(m.current.racePredictor.marathon.seconds)}` : ""}</div>
     </Card>
   );
 }
@@ -142,7 +140,10 @@ export function RestingHrCard({ data, to = "/progress/resting-hr" }) {
     <Card title="Resting Heart Rate" to={to}>
       {!last ? <NA>No resting heart rate yet</NA> : <>
         <div><span className="big num">{last.value}</span><span className="unit">bpm · {fmtDate(last.date)}</span></div>
-        <LineChart height="sm" labels={rows.map((r) => fmtDate(r.date))} series={[{ label: "RHR", data: rows.map((r) => r.value), color: "#f87171", fill: true }]} />
+        <LineChart height="sm" labels={rows.map((r) => fmtDate(r.date))} series={[
+          { label: "7-day average", data: rollingMean(rows, 7), color: "#f87171", fill: true, width: 2.5 },
+          { label: "Daily", data: rows.map((r) => r.value), color: "#f8717155", width: 1 },
+        ]} />
       </>}
     </Card>
   );
@@ -253,3 +254,85 @@ export function VO2Card({ m, data, to = "/progress/vo2max" }) {
 }
 
 export { Link };
+
+// ---- Recovery: one section, two methods (COROS default) ----
+const METHOD_KEY = "kf_recovery_method";
+export function useRecoveryMethod() {
+  const read = () => { try { return localStorage.getItem(METHOD_KEY) || "coros"; } catch { return "coros"; } };
+  const [method, setMethod] = useState(read);
+  useEffect(() => {
+    const on = () => setMethod(read());
+    window.addEventListener("kf-recovery-method", on);
+    return () => window.removeEventListener("kf-recovery-method", on);
+  }, []);
+  const set = (v) => { try { localStorage.setItem(METHOD_KEY, v); } catch {} setMethod(v); window.dispatchEvent(new Event("kf-recovery-method")); };
+  return [method, set];
+}
+
+export const METHOD_NAME = { coros: "COROS method", kempfit: "Kemp Fit method" };
+export const recoveryOf = (m, method) => (method === "kempfit" ? m?.current?.recoveryTime : m?.current?.recovery);
+
+// COROS-style colour bar: red 0-19, yellow 20-69, green 70-89, cyan 90-100, with a marker.
+export function RecoveryBar({ pct }) {
+  const segs = [[0, 20, "var(--red)"], [20, 70, "var(--yellow)"], [70, 90, "var(--green)"], [90, 100, "var(--cyan)"]];
+  return (
+    <div style={{ position: "relative", marginTop: 14 }} aria-hidden="true">
+      {pct != null && <div style={{ position: "absolute", top: -9, left: `calc(${pct}% - 5px)`, width: 0, height: 0, borderLeft: "5px solid transparent", borderRight: "5px solid transparent", borderTop: "6px solid var(--text)" }} />}
+      <div style={{ display: "flex", gap: 2 }}>{segs.map(([a, b, c]) => <div key={a} style={{ flex: b - a, height: 6, borderRadius: 3, background: c }} />)}</div>
+    </div>
+  );
+}
+
+export function RecoveryCard({ m, to = "/progress/recovery", showToggle = true }) {
+  const [method, setMethod] = useRecoveryMethod();
+  const r = recoveryOf(m, method);
+  const other = recoveryOf(m, method === "coros" ? "kempfit" : "coros");
+  const color = RECOVERY_COLOR[r?.state];
+  return (
+    <Card title="Recovery" to={to} right={showToggle && <span style={{ marginLeft: "auto" }} onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}>
+      <Seg options={[["coros", "COROS"], ["kempfit", "Kemp Fit"]]} value={method} onChange={setMethod} />
+    </span>} info={<Info title="Recovery" method={M(m, method === "kempfit" ? "recoveryTime" : "recovery")}>
+      <p><b>COROS method:</b> how recovered you are from recent training, from your Training Load and Base Fitness only, as COROS describes it. Sleep and HRV aren't used.</p>
+      <p><b>Kemp Fit method:</b> starts from how hard each run was for you (heart-rate-based EPOC and Training Effect, Firstbeat's published approach), then adjusts for last night's sleep, your resting heart rate and how you said you felt, compared with your own normal.</p>
+      <p>Both use COROS's levels: 0–19% Exhausted · 20–69% Fatigued · 70–89% Normal · 90–100% Fresh, capped at 96 hours. These are estimates, not medical measurements; listen to your body.</p>
+    </Info>}>
+      {!r ? <NA>Needs runs with heart rate</NA> : <>
+        <div className="row">
+          <Gauge value={r.pct} color={color} size={120} sub="%" />
+          <div>
+            <div style={{ color, fontWeight: 700, fontSize: 18 }}>{r.state}</div>
+            <div className="lbl">{r.advice}</div>
+            <div style={{ marginTop: 6 }} className="num">{r.hoursToFull ? <><b>{r.hoursToFull}</b> h till full recovery</> : "Fully recovered"}<Est /></div>
+          </div>
+        </div>
+        <RecoveryBar pct={r.pct} />
+        {other && <div className="lbl num" style={{ marginTop: 10 }}>{METHOD_NAME[method === "coros" ? "kempfit" : "coros"]}: {other.pct}% · {other.hoursToFull ? `${other.hoursToFull} h` : "recovered"}</div>}
+        {method === "kempfit" && r.modifiers?.length > 0 && <div className="lbl" style={{ marginTop: 6 }}>
+          {r.modifiers.slice(0, 3).map((x) => <div key={x.key}>{x.hours > 0 ? "▲" : "▼"} {x.label} <b className="num" style={{ color: x.hours > 0 ? "var(--orange)" : "var(--green)" }}>{x.hours > 0 ? "+" : ""}{x.hours} h</b></div>)}
+        </div>}
+      </>}
+    </Card>
+  );
+}
+
+// Last 7 days of daily status, so day-to-day flips read as a pattern.
+export function WeekStatusStrip({ series }) {
+  const days = (series || []).slice(-7);
+  if (days.length < 7) return null;
+  const counts = days.reduce((o, d) => ((o[d.status] = (o[d.status] || 0) + 1), o), {});
+  const [top, n] = Object.entries(counts).sort((a, b) => b[1] - a[1])[0] || [];
+  const summary = !top ? "" : n >= 5 ? `Mostly ${top} this week` : n >= 3 ? `Mainly ${top} this week, with some variation` : "Mixed this week";
+  return (
+    <div style={{ marginTop: 14 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 3 }} role="img" aria-label={`Last 7 days: ${days.map((d) => d.status).join(", ")}`}>
+        {days.map((d) => (
+          <div key={d.date} title={`${fmtDate(d.date, { weekday: "short", day: "numeric", month: "short" })}: ${d.status} (${d.intensityTrend}%)`} style={{ textAlign: "center" }}>
+            <div style={{ height: 8, borderRadius: 3, background: STATUS_COLOR[d.status] || "var(--card-2)" }} />
+            <div className="lbl" style={{ fontSize: 10, marginTop: 3 }}>{new Date(d.date).toLocaleDateString("en-GB", { weekday: "narrow" })}</div>
+          </div>
+        ))}
+      </div>
+      <div className="lbl" style={{ marginTop: 4 }}>{summary}</div>
+    </div>
+  );
+}

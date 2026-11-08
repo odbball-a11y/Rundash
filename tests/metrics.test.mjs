@@ -4,9 +4,9 @@ import assert from "node:assert/strict";
 import { lthrZones, paceZones, zoneOfHr, zoneOfPace } from "../src/metrics/zones.mjs";
 import { loadFromStream } from "../src/metrics/load.mjs";
 import { intensityTrendPct, statusFromTrend, ewma } from "../src/metrics/status.mjs";
-import { recoveryAt, recoveryState } from "../src/metrics/recovery.mjs";
+import { recoveryAt, recoveryState, pctFromRemaining } from "../src/metrics/recovery.mjs";
 import { efficiencyLevel } from "../src/metrics/efficiency.mjs";
-import { raceTime, effortAccuracy, teLabel, trainingFocus, vdotFromEfforts, racePredictor, runningFitness } from "../src/metrics/fitness.mjs";
+import { raceTime, effortAccuracy, teLabel, trainingFocus, vdotFromEfforts, racePredictor, runningFitness, rfFromMarathonMinutes, abilityScore, vdotFor } from "../src/metrics/fitness.mjs";
 import { bestTimeForDistance, bestSpeedForDuration, analyzeActivity } from "../src/metrics/activity.mjs";
 import { computeAll, resolveSettings, estimateThresholdPace } from "../src/metrics/index.mjs";
 import { hrSpeedBins } from "../src/metrics/activity.mjs";
@@ -43,9 +43,10 @@ test("Training Load calibration hits COROS worked examples", () => {
   near(run(143, 165), 295, 15, "165 min zone 2");
 });
 
-test("Intensity Trend matches both COROS screenshots", () => {
+test("Intensity Trend matches all three COROS screenshots", () => {
   assert.equal(intensityTrendPct(140, 123), 113);
   assert.equal(intensityTrendPct(26, 72), 36);
+  assert.equal(intensityTrendPct(53, 42), 126);
 });
 
 test("Training Status bands (EvoLab article)", () => {
@@ -54,8 +55,9 @@ test("Training Status bands (EvoLab article)", () => {
   assert.equal(statusFromTrend(100), "Optimized");
   assert.equal(statusFromTrend(99), "Maintaining");
   assert.equal(statusFromTrend(80), "Maintaining");
-  assert.equal(statusFromTrend(79, true), "Resuming");
-  assert.equal(statusFromTrend(50, false), "Performance");
+  assert.equal(statusFromTrend(79, { comingBack: true, loadRising: true }), "Resuming");
+  assert.equal(statusFromTrend(79, { comingBack: false, loadRising: true }), "Performance"); // taper with load ticking up
+  assert.equal(statusFromTrend(50, { comingBack: true, loadRising: false }), "Performance");
   assert.equal(statusFromTrend(36), "Decreasing");
 });
 
@@ -79,16 +81,22 @@ test("Efficiency and Training Effect labels", () => {
   assert.equal(teLabel(5.2), "Overreaching");
 });
 
-test("Recovery drops after load, recovers over time, timer capped at 96 h", () => {
-  const t0 = Date.parse("2026-11-01T10:00:00Z");
-  const r0 = recoveryAt([{ t: t0, load: 200, bf: 60 }], t0);
-  assert.ok(r0.pct < 70, `after hard run ${r0.pct}`);
-  const r1 = recoveryAt([{ t: t0, load: 200, bf: 60 }], t0 + 24 * 3600e3);
-  assert.ok(r1.pct > r0.pct);
-  const r2 = recoveryAt([{ t: t0, load: 2000, bf: 60 }], t0);
-  assert.ok(r2.hoursToFull <= 96);
+test("Recovery: short easy run recovers within a day, hard runs take days, capped at 96 h", () => {
+  const t0 = Date.parse("2026-11-06T17:30:00Z");
+  const easy = recoveryAt([{ t: t0, load: 62, bf: 37 }], t0);              // 2-mile run
+  assert.ok(easy.pct >= 80 && easy.hoursToFull <= 20, `easy ${easy.pct}% ${easy.hoursToFull} h`);
+  const next = recoveryAt([{ t: t0, load: 62, bf: 37 }], t0 + 27 * 3600e3);
+  assert.equal(next.pct, 100); assert.equal(next.hoursToFull, 0);
+  const hard = recoveryAt([{ t: t0, load: 200, bf: 37 }], t0);
+  assert.ok(hard.pct < 60 && hard.hoursToFull > 40, `hard ${hard.pct}% ${hard.hoursToFull} h`);
+  const later = recoveryAt([{ t: t0, load: 200, bf: 37 }], t0 + 24 * 3600e3);
+  assert.ok(later.pct > hard.pct);
+  const huge = recoveryAt([{ t: t0, load: 2000, bf: 37 }], t0);
+  assert.equal(huge.hoursToFull, 96); assert.equal(huge.state, "Exhausted");
   assert.equal(recoveryState(10), "Exhausted");
   assert.equal(recoveryState(95), "Fresh");
+  // COROS screenshot: 64% with 33 h till full recovery
+  near(pctFromRemaining(33), 64, 3, "COROS 64% at 33 h");
 });
 
 test("Race time from VDOT matches Daniels tables (VDOT 50: 5k ~19:57, marathon ~3:10:49)", () => {
@@ -129,7 +137,16 @@ test("computeAll end-to-end on synthetic history", () => {
   }
   const out = computeAll({ activities: acts, actMetrics, wellness: [{ id: "2026-10-30", vo2max: 47, restingHR: 50 }],
     settings: { rest: 50, max: 190, lthr: 168, tpSecPerKm: 270 }, today: "2026-10-31", now: Date.parse("2026-10-31T12:00:00") });
-  assert.equal(out.algorithmVersion, "1.2.0");
+  assert.equal(out.algorithmVersion, "1.6.1");
+  const h = out.current.runningFitness.history;
+  assert.ok(h.length >= 3 && h.every((x, i) => i === 0 || x.date > h[i - 1].date), "weekly Running Fitness history in date order");
+  assert.equal(h[h.length - 1].score.male, out.current.runningFitness.scoreBySex.male, "latest history point matches today");
+  assert.ok(h[h.length - 1].score.male != null && h[h.length - 1].predictor.marathon > 0);
+  assert.equal(out.current.recovery.history.length, 14);
+  assert.ok(out.current.recoveryTime.pct >= 0 && out.current.recoveryTime.pct <= 100 && out.current.recoveryTime.state);
+  assert.ok(out.activities[0].corosRecoveryHours > 0);
+  assert.ok(out.current.recoveryTime && Array.isArray(out.current.recoveryTime.history));
+  assert.ok(out.activities[0].peakEpoc > 0);
   assert.ok(out.current.baseFitness > 0);
   assert.ok(out.current.status);
   assert.equal(out.current.vo2Source, "Garmin");
@@ -168,4 +185,125 @@ test("Race predictor anchors to real efforts, not an optimistic watch VO2max", (
   assert.equal(rf.speedSource, "best efforts");
   const p = racePredictor({ vdot: rf.vdot, longestRunKm6w: 6 });
   near(p["5k"].seconds, 28 * 60, 60, "5k prediction near the actual parkrun");
+});
+
+import { toIntervalsText, estimateWorkout, projectSeries, validateWorkout } from "../src/metrics/workouts.mjs";
+
+test("Workout -> intervals.icu text uses absolute pace and %LTHR", () => {
+  const zones = { pace: paceZones(341.5), hr: lthrZones(163) };
+  const w = { name: "Threshold", steps: [
+    { kind: "warmup", dur: { type: "time", value: 600 }, target: { type: "paceZone", zone: 2 } },
+    { kind: "repeat", times: 5, steps: [
+      { kind: "training", dur: { type: "distance", value: 1000 }, target: { type: "paceZone", zone: 4 } },
+      { kind: "rest", dur: { type: "time", value: 90 }, target: { type: "none" } },
+    ] },
+    { kind: "cooldown", dur: { type: "time", value: 600 }, target: { type: "hrZone", zone: 1 } },
+  ] };
+  const txt = toIntervalsText(w, zones, { lthr: 163 });
+  assert.equal(txt, [
+    "- Warm Up 10m 6:30/km-7:44/km Pace",
+    "",
+    "Main Set 5x",
+    "- Training 1km 5:36/km-6:02/km Pace",
+    "- Rest 1m30s",
+    "",
+    "- Cool Down 10m 71-79% LTHR",
+  ].join("\n"));
+  const e = estimateWorkout(w, zones, { rest: 44, max: 180, lthr: 163 });
+  assert.equal(e.blocks.length, 12);
+  assert.ok(e.seconds > 1800 && e.seconds < 3600, `seconds ${e.seconds}`);
+  assert.ok(e.load > 40, `load ${e.load}`);
+  assert.deepEqual(validateWorkout(w), []);
+  assert.ok(validateWorkout({ name: "", steps: [] }).length === 2);
+});
+
+test("Projection decays without load and rises with it", () => {
+  const rest = projectSeries(40, 40, Array(14).fill(0));
+  assert.ok(rest[13].baseFitness < 40 && rest[13].loadImpact < rest[13].baseFitness);
+  const build = projectSeries(40, 40, Array(14).fill(80));
+  assert.ok(build[13].baseFitness > 40 && build[13].intensityTrend > 100);
+});
+
+import { epocConstant, epocFromStream, trainingEffectFromEpoc, activityClass, baseRemaining, hoursForTe, sleepModifier, rhrModifier, feelModifier, pctVo2max, teExtended, hoursForTeExtended, calibrateScale, PRIOR_SCALE } from "../src/metrics/epoc.mjs";
+
+test("EPOC model reproduces Firstbeat Fig. 5 curves and Table 4 typical values", () => {
+  near(epocConstant(0.7, 30), 85, 10, "70% 30 min");
+  near(epocConstant(0.7, 60), 135, 12, "70% 60 min");
+  near(epocConstant(0.6, 60), 62, 8, "60% 60 min");
+  const easyHour = epocConstant(0.6, 60);
+  assert.ok(easyHour >= 40 && easyHour <= 90, `60 min easy run ${easyHour} (Table 4: 40-90)`);
+  const race10k = epocConstant(0.85, 45);
+  assert.ok(race10k >= 120 && race10k <= 280, `10k race ${race10k} (Table 4: 120-260)`);
+  const walk = epocConstant(0.45, 60);
+  assert.ok(walk >= 10 && walk <= 25, `brisk 1 h walk ${walk} (Table 4: 10-25)`);
+  // Intervals peak lower than continuous at the same high intensity (EPOC falls during rests)
+  const t = Array.from({ length: 1801 }, (_, i) => i);
+  const cont = epocFromStream(t, t.map(() => 170), { rest: 50, max: 185, vo2max: 50 });
+  const intv = epocFromStream(t, t.map((i) => (Math.floor(i / 180) % 2 ? 120 : 170)), { rest: 50, max: 185, vo2max: 50 });
+  assert.ok(intv < cont, `intervals ${intv} < continuous ${cont}`);
+  near(pctVo2max(185, 50, 185, 50), 1, 0.001, "max HR = 100% VO2max");
+  // Real case: 20 min at ~148 bpm, rest 44, LTHR 163 should be an ordinary run, not race-like (Table 4: 10k race 120-260)
+  const t20 = Array.from({ length: 1216 }, (_, i) => i);
+  const easy = epocFromStream(t20, t20.map((i) => 135 + Math.min(25, i / 50)), { rest: 44, max: 180, lthr: 163, vo2max: 43 });
+  assert.ok(easy > 30 && easy < 120, `20-min run EPOC ${easy}`);
+  // Noise must not inflate EPOC: same mean HR with +-12 bpm jitter stays close to the smooth trace
+  const noisy = epocFromStream(t20, t20.map((i) => 135 + Math.min(25, i / 50) + (i % 2 ? 12 : -12)), { rest: 44, max: 180, lthr: 163, vo2max: 43 });
+  assert.ok(Math.abs(noisy - easy) / easy < 0.08, `noisy ${noisy} vs smooth ${easy}`);
+});
+
+test("Training Effect from peak EPOC and activity class (Firstbeat Fig. 2)", () => {
+  assert.equal(activityClass(1.5), 6);
+  assert.equal(activityClass(6), 7.5);
+  const te = trainingEffectFromEpoc(110, 6);
+  assert.ok(te >= 3 && te < 4.2, `TE ${te}`);
+  assert.ok(trainingEffectFromEpoc(110, 9) < te, "fitter athlete gets lower TE for same EPOC");
+  assert.equal(trainingEffectFromEpoc(1000, 6), 5);
+});
+
+test("Recovery time accumulates, counts down, caps at 96 h; modifiers move it", () => {
+  assert.equal(hoursForTe(3), 14);
+  near(hoursForTe(3.7), 23.8, 0.1, "20-min run at ~78% VO2max (TE 3.7)");
+  const t0 = Date.parse("2026-11-06T18:00:00Z");
+  assert.equal(Math.round(baseRemaining([{ t: t0, te: 3 }], t0)), 14);
+  assert.equal(baseRemaining([{ t: t0, te: 3 }], t0 + 30 * 3600e3), 0);
+  assert.equal(baseRemaining([{ t: t0, te: 5 }, { t: t0 + 3600e3, te: 5 }, { t: t0 + 7200e3, te: 5 }], t0 + 7200e3), 96);
+  assert.ok(sleepModifier(360, 450)[0].hours > 0, "short sleep adds hours");
+  assert.ok(sleepModifier(540, 450)[0].hours < 0, "long sleep removes hours");
+  assert.equal(rhrModifier(52, 47).hours, 10);
+  assert.equal(rhrModifier(48, 47), null);
+  assert.equal(feelModifier(1).hours, 12);
+  assert.equal(feelModifier(5).hours, -6);
+});
+
+test("Kemp Fit v1.5: hours keep rising beyond TE 5, and calibration follows the athlete's RHR", () => {
+  const c = 6;
+  assert.equal(teExtended(100, c), trainingEffectFromEpoc(100, c));
+  assert.ok(teExtended(300, c) > teExtended(200, c) && teExtended(200, c) > 5, "uncapped above TE 5");
+  assert.ok(hoursForTeExtended(5.5) > hoursForTeExtended(5), "hours keep scaling");
+  assert.ok(hoursForTeExtended(8.6) < 100, `gentle growth beyond TE 5: ${hoursForTeExtended(8.6)}`);
+  // Too few samples -> prior
+  assert.equal(calibrateScale([{ rawHours: 40, hoursToMorning: 14, rhrRise: 1 }]).scale, PRIOR_SCALE);
+  // Synthetic athlete whose next-morning RHR follows residual fatigue with true k = 0.5
+  const samples = Array.from({ length: 150 }, (_, i) => {
+    const raw = 10 + (i * 37) % 60, toMorning = 12 + (i * 7) % 8;
+    return { rawHours: raw, hoursToMorning: toMorning, rhrRise: 0.12 * Math.max(0, 0.5 * raw - toMorning) + ((i * 13) % 5 - 2) * 0.3 };
+  });
+  const cal = calibrateScale(samples);
+  assert.ok(cal.fitted >= 0.4 && cal.fitted <= 0.6, `fitted ${cal.fitted}`);
+  assert.ok(cal.weight > 0 && cal.scale < PRIOR_SCALE && cal.scale > cal.fitted, `blended ${cal.scale}`);
+  // No relationship -> stays at prior
+  const noise = samples.map((x, i) => ({ ...x, rhrRise: ((i * 17) % 7) - 3 }));
+  assert.equal(calibrateScale(noise).weight, 0);
+});
+
+test("Running Fitness uses COROS's scale (reproduces COROS screenshots)", () => {
+  near(rfFromMarathonMinutes(153 + 34 / 60), 96.4, 0.3, "Training Hub: 2:33:34 -> 96.4");
+  near(rfFromMarathonMinutes(167 + 31 / 60), 94.4, 0.1, "Running Fitness article: 2:47:31 -> 94.4");
+  assert.equal(rfFromMarathonMinutes(240), 75);
+  assert.equal(rfFromMarathonMinutes(240, "female"), 81.7);
+  assert.ok(rfFromMarathonMinutes(900) >= 40 && rfFromMarathonMinutes(100) === 100);
+  // COROS elite profile: threshold 5:38/mi (3:30/km) -> Endurance 96.1
+  near(abilityScore(vdotFor(1000 / 210, 60)), 96.1, 1.5, "elite Endurance");
+  // COROS Athlete A: threshold ~4:10/km -> Endurance 91.9
+  near(abilityScore(vdotFor(1000 / 250, 60)), 91.9, 2.5, "Athlete A Endurance");
 });

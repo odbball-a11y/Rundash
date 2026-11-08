@@ -1,4 +1,4 @@
-// Runs automatically every 5 minutes on Netlify:
+// Runs automatically every 15 minutes on Netlify (compute costs credits; Refresh pulls on demand):
 // 1) summaries + wellness, 2) streams/laps for activities still missing them,
 // 3) metric engine (per-activity analysis + daily series + snapshot).
 import { sync } from "../lib/intervals.mjs";
@@ -27,4 +27,4 @@ export default async () => {
   }
 };
 
-export const config = { schedule: "*/5 * * * *" };
+export const config = { schedule: "*/15 * * * *" };

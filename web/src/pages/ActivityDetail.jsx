@@ -2,7 +2,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { Chart } from "chart.js";
 import "../components/Charts.jsx";
-import { useApi, useAll } from "../api.js";
+import { useApi, useAll, invalidate } from "../api.js";
+import { write } from "../edit.js";
+import { FEEL_LABELS } from "../../../src/metrics/epoc.mjs";
 import { PageHeader, Card, Loading, ErrorState, Seg, Info, Est, NA, Bar } from "../components/UI.jsx";
 import { fmtDur, fmtPace, fmtKm, fmtDateTime, fmtNum, ZONE_COLORS } from "../format.js";
 
@@ -83,6 +85,28 @@ function splitsFromStreams(s) {
   return out;
 }
 
+function FeelPicker({ id, value }) {
+  const [v, setV] = useState(value ?? null);
+  const [msg, setMsg] = useState("");
+  useEffect(() => setV(value ?? null), [value]);
+  const pick = async (f) => {
+    const next = f === v ? null : f;
+    setV(next); setMsg("");
+    try { await write("POST", "/api/feel", { activityId: id, feel: next }); invalidate("/api/metrics"); setMsg("Saved · updates your Recovery Time"); }
+    catch (e) { setV(value ?? null); setMsg(e.message); }
+  };
+  return (
+    <div style={{ marginTop: 12 }}>
+      <div className="lbl" style={{ marginBottom: 6 }}>How did you feel after this run?</div>
+      <div className="row" style={{ gap: 4, flexWrap: "wrap" }}>
+        {[1, 2, 3, 4, 5].map((f) => <button key={f} className="iconbtn" aria-pressed={v === f} onClick={() => pick(f)}
+          style={{ padding: "0 8px", borderColor: v === f ? "var(--cyan)" : undefined, color: v === f ? "var(--cyan)" : undefined }}>{FEEL_LABELS[f]}</button>)}
+      </div>
+      {msg && <div className="lbl" role="status" style={{ marginTop: 4 }}>{msg}</div>}
+    </div>
+  );
+}
+
 export default function ActivityDetail() {
   const { id } = useParams();
   const { data, loading, error } = useApi(`/api/activity?id=${encodeURIComponent(id)}`);
@@ -130,14 +154,17 @@ export default function ActivityDetail() {
             <div><div className="v">{am?.load ?? "—"}</div><div className="lbl">Training Load<Est /></div></div>
           </div>
         </Card>
-        <Card title="Training analysis" info={<Info title="Training analysis"><p>Training Effect (0–5) shows how much the run developed your aerobic and anaerobic fitness. Training Focus is the main improvement, from the load in each pace zone. Efficiency compares this run's pace-to-heart-rate with your last 42 days (80–120%).</p><p>All three are Kemp Fit estimates; Garmin's own Training Effect isn't available from your watch's data feed.</p></Info>}>
+        <Card title="Training analysis" info={<Info title="Training analysis"><p>Peak EPOC is the exercise "after-burn" estimated from your heart rate (Firstbeat's published method). Aerobic Training Effect (0–5) compares it with how much you usually train. Training Focus is the main improvement, from the load in each pace zone. Efficiency compares this run's pace-to-heart-rate with your last 42 days (80–120%).</p><p>These are Kemp Fit estimates; Garmin's own Training Effect isn't available from your watch's data feed.</p></Info>}>
           <table className="tbl"><tbody>
+            <tr><td>Peak EPOC</td><td className="num" style={{ textAlign: "right" }}>{am?.peakEpoc != null ? `${am.peakEpoc} ml/kg` : "—"}</td></tr>
             <tr><td>Aerobic TE</td><td className="num" style={{ textAlign: "right" }}><b>{fmtNum(am?.trainingEffect?.aerobic, 1)}</b> <span className="muted">{am?.trainingEffect?.aerobicLabel}</span></td></tr>
             <tr><td>Anaerobic TE</td><td className="num" style={{ textAlign: "right" }}><b>{fmtNum(am?.trainingEffect?.anaerobic, 1)}</b> <span className="muted">{am?.trainingEffect?.anaerobicLabel}</span></td></tr>
             <tr><td>Training Focus</td><td style={{ textAlign: "right" }}>{am?.focus || "—"}</td></tr>
             <tr><td>Efficiency</td><td className="num" style={{ textAlign: "right" }}>{am?.efficiency ? `${am.efficiency}% · ${am.efficiencyLevel}` : "—"}</td></tr>
             <tr><td>Load level</td><td style={{ textAlign: "right" }}>{am?.loadLevel || "—"}</td></tr>
+            <tr><td>Recovery added</td><td className="num" style={{ textAlign: "right" }}>{am?.recoveryHours != null ? `${am.recoveryHours} h` : "—"}</td></tr>
           </tbody></table>
+          <FeelPicker id={id} value={am?.feel} />
         </Card>
 
         <Card title="Charts" className="span2" right={<span style={{ marginLeft: "auto" }}><Seg options={[["time", "Time"], ["distance", "Distance"]]} value={xMode} onChange={setXMode} /></span>}>

@@ -5,8 +5,10 @@ import * as D from "./pages/Details.jsx";
 import Activities from "./pages/Activities.jsx";
 import ActivityDetail from "./pages/ActivityDetail.jsx";
 import Explore from "./pages/Explore.jsx";
-import Profile, { SettingsPage, RecordsPage, WorkoutsPage, PlansPage, DataPage } from "./pages/Profile.jsx";
-import { HubDashboard, EvoLab, HubActivities, Calendar } from "./pages/Hub.jsx";
+import Profile, { SettingsPage, RecordsPage, PlansPage, DataPage, EditingPage } from "./pages/Profile.jsx";
+import { HubDashboard, EvoLab, HubActivities } from "./pages/Hub.jsx";
+import Calendar from "./pages/Calendar.jsx";
+import { Library, Builder } from "./pages/Workouts.jsx";
 
 const isWide = () => typeof window !== "undefined" && window.matchMedia("(min-width: 900px)").matches;
 
@@ -47,6 +49,7 @@ export default function App() {
           <Route path="/progress/training-status" element={<D.TrainingStatusDetail />} />
           <Route path="/progress/training-load" element={<D.TrainingLoadDetail />} />
           <Route path="/progress/recovery" element={<D.RecoveryDetail />} />
+          <Route path="/progress/recovery-time" element={<Navigate to="/progress/recovery" replace />} />
           <Route path="/progress/running-fitness" element={<D.RunningFitnessDetail />} />
           <Route path="/progress/race-predictor" element={<D.RacePredictorDetail />} />
           <Route path="/progress/resting-hr" element={<D.RestingHrDetail />} />
@@ -58,7 +61,10 @@ export default function App() {
           <Route path="/profile" element={<Profile />} />
           <Route path="/profile/settings" element={<SettingsPage />} />
           <Route path="/profile/records" element={<RecordsPage />} />
-          <Route path="/profile/workouts" element={<WorkoutsPage />} />
+          <Route path="/profile/workouts" element={<Library />} />
+          <Route path="/profile/workouts/:id" element={<Builder />} />
+          <Route path="/profile/editing" element={<EditingPage />} />
+          <Route path="/calendar" element={<Calendar />} />
           <Route path="/profile/plans" element={<PlansPage />} />
           <Route path="/profile/data" element={<DataPage />} />
           <Route path="/hub/dashboard" element={<HubDashboard />} />

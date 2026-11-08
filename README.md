@@ -77,7 +77,7 @@ localStorage. **Never put the token in `index.html`**, because this repo is publ
 
 ## Live data via intervals.icu (recommended)
 
-Garmin → intervals.icu → Netlify (checks every 5 min) → dashboard (refreshes every minute).
+Garmin → intervals.icu → Netlify (checks every 15 min; Refresh pulls immediately) → dashboard (refreshes every minute).
 Gives runs, HRV, sleep, resting HR and fitness/fatigue/form. No GitHub Actions needed.
 
 1. Free account at https://intervals.icu → **Settings → Connections → Garmin**.
@@ -93,6 +93,10 @@ Endpoints:
 - `/api/activity?id=…`: one activity with second-by-second streams and laps/intervals
   (GPS is left out unless `&key=ADMIN_KEY` is given; set `ADMIN_KEY` in Netlify to use it)
 - `/api/inventory`: which fields intervals.icu sends for this athlete (names and counts only)
+- `/api/workouts`: workout library (GET; POST/DELETE need `x-kf-key: ADMIN_KEY`)
+- `/api/calendar?from=&to=`: planned workouts, races and notes from intervals.icu plus weekly phases;
+  POST `{action: "workout"|"event"|"phase"}` and DELETE `?eventId=` need the key. Planned workouts are
+  written to intervals.icu, which uploads them to Garmin when "Upload planned workouts" is enabled.
 - `/api/metrics`: COROS-style metrics (Training Load, Base Fitness, Load Impact, Intensity Trend,
   Training Status, Recovery, zones, Running Fitness, race predictor, efficiency, Training Effect,
   focus, PRs) with method labels; `?fresh=1` recompute, `?snapshots=1` daily history
@@ -100,8 +104,9 @@ Endpoints:
 Metric engine: `src/metrics/` (tests: `npm test`). See `docs/coros-research.md` §4 for which
 metrics are exact COROS definitions and which are estimates.
 
-Streams and laps are fetched in the background, up to 8 activities per 5-minute run, newest first.
-The old Runalyze/GitHub Actions files in `data/` are only used as a fallback.
+Streams and laps are fetched in the background, up to 8 activities per 15-minute run, newest first.
+The old Runalyze files in `data/` are only used by the classic page; the GitHub Actions
+Runalyze workflow has been removed (each data commit would trigger a Netlify production deploy).
 
 ## App
 
